@@ -1,5 +1,5 @@
 [package]
-name = "ant"
+name = "abes_nice_things"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,3 +11,9 @@ serde = { version = "1", features = ["derive"]}
 toml = "0.5"
 dirs = "3.0"
 sequential-test = "0.2.4"
+rand = "0.8"
+
+[features]
+default = []
+file_ops = []
+ai = []

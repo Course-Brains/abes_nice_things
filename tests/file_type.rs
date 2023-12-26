@@ -2,10 +2,7 @@
 mod tests {
     #[allow(non_snake_case)]
     mod VALID_FILE_TYPE_VALUES {
-        use ant::file_ops::{
-            VALID_FILE_TYPE_VALUES as VALUES,
-            FileType,
-        };
+        use abes_nice_things::file_ops::{FileType, VALID_FILE_TYPE_VALUES as VALUES};
         use std::path::PathBuf;
         #[test]
         fn equivalence() {
@@ -13,11 +10,14 @@ mod tests {
             for (key, value) in VALUES.iter() {
                 let path: PathBuf = PathBuf::new().join("test.".to_owned() + key);
                 let file_type: FileType = FileType::from_path(&path);
-                assert_eq!(&file_type, value, "FileType generation from path was incorrect")
+                assert_eq!(
+                    &file_type, value,
+                    "FileType generation from path was incorrect"
+                )
             }
         }
         mod equivalence {
-            use super::{VALUES, FileType, PathBuf};
+            use super::{FileType, PathBuf, VALUES};
             #[test]
             fn toml() {
                 sub("toml", FileType::Toml);
@@ -28,12 +28,12 @@ mod tests {
             }
 
             fn sub(str: &str, ft: FileType) {
-                assert!(VALUES.contains(&(str, ft)), "Values list does not contain type");
+                assert!(
+                    VALUES.contains(&(str, ft)),
+                    "Values list does not contain type"
+                );
                 assert_eq!(
-                    FileType::from_path(
-                        &PathBuf::new()
-                        .join("test.".to_owned() + str)
-                    ),
+                    FileType::from_path(&PathBuf::new().join("test.".to_owned() + str)),
                     ft,
                     "from_path created incorrect value"
                 )

@@ -2,13 +2,13 @@
 mod tests {
     #[allow(non_snake_case)]
     mod FileOptions {
-        use ant::file_ops::*;
+        use abes_nice_things::file_ops::*;
         use sequential_test::sequential;
-        use serde::{Serialize, Deserialize};
-        
+        use serde::{Deserialize, Serialize};
+
         #[derive(Serialize, Deserialize, PartialEq, Debug)]
         struct Simple {
-            x: usize
+            x: usize,
         }
 
         #[test]
@@ -23,7 +23,11 @@ mod tests {
             println!("Loading value");
             let load: Simple = load_toml("test.toml");
             println!("Comparing equivalence");
-            assert_eq!(value, load, "Initial and loaded value were inequivalent: initial:{:?}, load:{:?}", value, load);
+            assert_eq!(
+                value, load,
+                "Initial and loaded value were inequivalent: initial:{:?}, load:{:?}",
+                value, load
+            );
             println!("Deleting file");
             delete("test.toml");
             println!("Where problem?");

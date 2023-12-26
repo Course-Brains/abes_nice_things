@@ -1,26 +1,25 @@
 use std::{
-	fs::{self, File, create_dir_all, OpenOptions},
-	io::{Read, Write},
-    path::{Path, PathBuf},
     collections::HashMap,
+    fs::{self, create_dir_all, File, OpenOptions},
+    io::{Read, Write},
+    path::{Path, PathBuf},
 };
 
-use dirs;
+use crate::OnceLockMethod;
 use bincode;
-use serde::{Serialize, Deserialize, de::DeserializeOwned};
-use crate::types::OnceLockMethod;
+use dirs;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-static VALID_FILE_TYPES: OnceLockMethod<HashMap<&str, FileType>> = OnceLockMethod::new(&|| -> HashMap<&str, FileType> {
-    let mut map: HashMap<&str, FileType> = HashMap::new();
-    for (key, value) in VALID_FILE_TYPE_VALUES.iter() {
-        map.insert(key, *value);
-    }
-    return map
-});
-pub const VALID_FILE_TYPE_VALUES: [(&str, FileType); 2] = [
-    ("toml", FileType::Toml),
-    ("bin", FileType::Bin),
-];
+static VALID_FILE_TYPES: OnceLockMethod<HashMap<&str, FileType>> =
+    OnceLockMethod::new(&|| -> HashMap<&str, FileType> {
+        let mut map: HashMap<&str, FileType> = HashMap::new();
+        for (key, value) in VALID_FILE_TYPE_VALUES.iter() {
+            map.insert(key, *value);
+        }
+        return map;
+    });
+pub const VALID_FILE_TYPE_VALUES: [(&str, FileType); 2] =
+    [("toml", FileType::Toml), ("bin", FileType::Bin)];
 
 #[derive(Copy, Clone, Default, Deserialize, Serialize, PartialEq, Debug, Eq)]
 pub enum FileType {
@@ -31,7 +30,7 @@ pub enum FileType {
 impl FileType {
     pub fn deserialize<T>(&self, bytes: Vec<u8>) -> Result<T, DeserializeFileTypeError>
     where
-        T: Serialize + DeserializeOwned
+        T: Serialize + DeserializeOwned,
     {
         match self {
             // Deserializing does require the wrapped value to be stored before hand
@@ -39,58 +38,39 @@ impl FileType {
             FileType::Toml => {
                 let wrapped: Result<T, toml::de::Error> = toml::from_slice(bytes.as_slice());
                 match wrapped {
-                    Err(error) => {
-                        return Err(DeserializeFileTypeError::Toml(error))
-                    }
-                    Ok(value) => {
-                        return Ok(value)
-                    }
+                    Err(error) => return Err(DeserializeFileTypeError::Toml(error)),
+                    Ok(value) => return Ok(value),
                 }
             }
             FileType::Bin => {
-                let wrapped: Result<T, Box<bincode::ErrorKind>> = bincode::deserialize(bytes.as_slice());
+                let wrapped: Result<T, Box<bincode::ErrorKind>> =
+                    bincode::deserialize(bytes.as_slice());
                 match wrapped {
-                    Err(error) => {
-                        return Err(DeserializeFileTypeError::Bin(error))
-                    }
-                    Ok(value) => {
-                        return Ok(value)
-                    }
+                    Err(error) => return Err(DeserializeFileTypeError::Bin(error)),
+                    Ok(value) => return Ok(value),
                 }
             }
         }
     }
     pub fn serialize<T>(&self, item: T) -> Result<Vec<u8>, SerializeFileTypeError>
     where
-        T: Serialize + DeserializeOwned
+        T: Serialize + DeserializeOwned,
     {
         match self {
             // Serializing does not require the wrapped value to be explicitly defined type because it is by the arg
-            FileType::Toml => {
-                match toml::to_vec(&item) {
-                    Ok(value) => {
-                        return Ok(value)
-                    }
-                    Err(error) => {
-                        return Err(SerializeFileTypeError::Toml(error))
-                    }
-                }
-            }
-            FileType::Bin => {
-                match bincode::serialize(&item) {
-                    Ok(value) => {
-                        return Ok(value)
-                    }
-                    Err(error) => {
-                        return Err(SerializeFileTypeError::Bin(error))
-                    }
-                }
-            }
+            FileType::Toml => match toml::to_vec(&item) {
+                Ok(value) => return Ok(value),
+                Err(error) => return Err(SerializeFileTypeError::Toml(error)),
+            },
+            FileType::Bin => match bincode::serialize(&item) {
+                Ok(value) => return Ok(value),
+                Err(error) => return Err(SerializeFileTypeError::Bin(error)),
+            },
         }
     }
     pub fn from_path<P: AsRef<Path>>(path: &P) -> FileType {
         let extension: &str = path.as_ref().extension().unwrap().to_str().unwrap();
-        let valid: HashMap<&str, FileType> = VALID_FILE_TYPES.get_or_init();
+        let valid: HashMap<&str, FileType> = VALID_FILE_TYPES.get_or_init().to_owned().unwrap();
         *valid.get_key_value(extension).unwrap().1
     }
 }
@@ -124,7 +104,7 @@ pub enum Directory {
     Public,
     Runtime,
     Template,
-    Video
+    Video,
 }
 impl Default for Directory {
     fn default() -> Directory {
@@ -133,64 +113,28 @@ impl Default for Directory {
 }
 impl Directory {
     pub const fn new() -> Directory {
-        return Directory::None
+        return Directory::None;
     }
     pub fn to_path_buf(&self) -> PathBuf {
         match self {
-            Directory::None => {
-                return PathBuf::new()
-            }
-            Directory::Audio => {
-                return dirs::audio_dir().unwrap()
-            }
-            Directory::Cache => {
-                return dirs::cache_dir().unwrap()
-            }
-            Directory::Config => {
-                return dirs::config_dir().unwrap()
-            }
-            Directory::Data => {
-                return dirs::data_dir().unwrap()
-            }
-            Directory::LocalData => {
-                return dirs::data_local_dir().unwrap()
-            }
-            Directory::Desktop => {
-                return dirs::desktop_dir().unwrap()
-            }
-            Directory::Document => {
-                return dirs::document_dir().unwrap()
-            }
-            Directory::Download => {
-                return dirs::download_dir().unwrap()
-            }
-            Directory::Executable => {
-                return dirs::executable_dir().unwrap()
-            }
-            Directory::Font => {
-                return dirs::font_dir().unwrap()
-            }
-            Directory::Home => {
-                return dirs::home_dir().unwrap()
-            }
-            Directory::Picture => {
-                return dirs::picture_dir().unwrap()
-            }
-            Directory::Preference => {
-                return dirs::preference_dir().unwrap()
-            }
-            Directory::Public => {
-                return dirs::public_dir().unwrap()
-            }
-            Directory::Runtime => {
-                return dirs::runtime_dir().unwrap()
-            }
-            Directory::Template => {
-                return dirs::template_dir().unwrap()
-            }
-            Directory::Video => {
-                return dirs::video_dir().unwrap()
-            }
+            Directory::None => return PathBuf::new(),
+            Directory::Audio => return dirs::audio_dir().unwrap(),
+            Directory::Cache => return dirs::cache_dir().unwrap(),
+            Directory::Config => return dirs::config_dir().unwrap(),
+            Directory::Data => return dirs::data_dir().unwrap(),
+            Directory::LocalData => return dirs::data_local_dir().unwrap(),
+            Directory::Desktop => return dirs::desktop_dir().unwrap(),
+            Directory::Document => return dirs::document_dir().unwrap(),
+            Directory::Download => return dirs::download_dir().unwrap(),
+            Directory::Executable => return dirs::executable_dir().unwrap(),
+            Directory::Font => return dirs::font_dir().unwrap(),
+            Directory::Home => return dirs::home_dir().unwrap(),
+            Directory::Picture => return dirs::picture_dir().unwrap(),
+            Directory::Preference => return dirs::preference_dir().unwrap(),
+            Directory::Public => return dirs::public_dir().unwrap(),
+            Directory::Runtime => return dirs::runtime_dir().unwrap(),
+            Directory::Template => return dirs::template_dir().unwrap(),
+            Directory::Video => return dirs::video_dir().unwrap(),
         }
     }
 }
@@ -218,7 +162,7 @@ impl FileOptions {
             reset_invalid_deserialization: true,
             truncate_existing_files: true,
             start_location: Directory::new(),
-        }
+        };
     }
     // These methods can't be const because const functions can't take mutable references
     pub fn create_missing_directories(&mut self, value: bool) {
@@ -241,7 +185,7 @@ impl FileOptions {
                 create_dir_all(dir_path).unwrap()
             }
         }
-        return path
+        return path;
     }
     pub fn load<T, P>(&self, path: P) -> T
     where
@@ -266,19 +210,13 @@ impl FileOptions {
                     panic!("{:?}", error);
                 }
                 file.set_len(0).unwrap();
-                file.write_all(
-                    toml::to_string(
-                        &T::default()
-                    ).unwrap()
-                    .as_bytes()
-                ).unwrap();
+                file.write_all(toml::to_string(&T::default()).unwrap().as_bytes())
+                    .unwrap();
                 let mut content: Vec<u8> = Vec::new();
                 file.read_to_end(&mut content).unwrap();
                 return file_type.deserialize(content).unwrap();
             }
-            Ok(value) => {
-                return value
-            }
+            Ok(value) => return value,
         }
     }
     pub fn save<T, P>(&self, item: T, path: P) -> Result<(), SerializeFileTypeError>
@@ -294,20 +232,15 @@ impl FileOptions {
             .read(false)
             .write(true)
             .open(path)
-            .unwrap()
-        ;
+            .unwrap();
         let content: Vec<u8>;
         match file_type.serialize(item) {
-            Ok(value) => {
-                content = value
-            }
-            Err(error) => {
-                return Err(error)
-            }
+            Ok(value) => content = value,
+            Err(error) => return Err(error),
         }
         let content: &[u8] = content.as_slice();
         file.write_all(content).unwrap();
-        return Ok(())
+        return Ok(());
     }
 }
 
@@ -321,21 +254,21 @@ impl FileOptions {
 /// That may seem confusing, but if it doesn't implement [Deserialize], how are you going to read the data?
 /// For example, to store an isize, you would:
 /// ```
-/// # use crate::file_ops::{save_bin, load_bin, delete};
-/// let x: isize = 5; 
+/// # use ant::file_ops::{save_bin, load_bin, delete};
+/// let x: isize = 5;
 /// save_bin("example.bin", &x);
 /// # let load: isize = load_bin("example.bin");
 /// # delete("example.bin");
 /// assert_eq!(load, x);
 /// ```
 /// Note that both [Serialize] and [Deserialize] are implemented for types included with rust.
-/// 
+///
 /// Also note that all files must be of the .bin file type.
-/// 
+///
 /// While storing an [isize] is nice, most of the time, you will be storing much larger data types.
 /// Here is an example of storing a struct containing some basic fields.
 /// ```
-/// # use crate::file_ops::{save_bin, load_bin, delete};
+/// # use ant::file_ops::{save_bin, load_bin, delete};
 /// # use serde::{Serialize, Deserialize};
 /// #[derive(Default, Serialize, Deserialize)]
 /// # #[derive(Debug, PartialEq)]
@@ -355,7 +288,7 @@ impl FileOptions {
 /// Including the data inside of structs and enums.
 /// For example:
 /// ```
-/// # use crate::file_ops::{save_bin, load_bin, delete};
+/// # use ant::file_ops::{save_bin, load_bin, delete};
 /// # use serde::{Serialize, Deserialize};
 /// #[derive(Default, Serialize, Deserialize)]
 /// # #[derive(Debug, PartialEq)]
@@ -379,7 +312,7 @@ impl FileOptions {
 /// Even if the main data implements both.
 /// For example:
 /// ```compile_fail
-/// # use crate::file_ops::{save_bin, load_bin, delete};
+/// # use ant::file_ops::{save_bin, load_bin, delete};
 /// # use serde::{Serialize, Deserialize};
 /// #[derive(Default)]
 /// # #[derive(Debug, PartialEq)]
@@ -399,23 +332,24 @@ pub fn save_bin<T>(path: &str, data: &T)
 where
     T: Serialize + DeserializeOwned,
 {
-	let file = File::create(path);
-	match file {
-		Ok(mut file) => {
-			let serialized = bincode::serialize(data).expect("Serialization failed");
-			file.write_all(&serialized).expect("Failed to write data to file");
-		}
-		Err(e) => {
-			panic!("Error opening file: {}", e)
-		}
-	}
+    let file = File::create(path);
+    match file {
+        Ok(mut file) => {
+            let serialized = bincode::serialize(data).expect("Serialization failed");
+            file.write_all(&serialized)
+                .expect("Failed to write data to file");
+        }
+        Err(e) => {
+            panic!("Error opening file: {}", e)
+        }
+    }
 }
 
 /// This saves a struct to a .toml file.
 /// The benefit of using toml is the readability and compatability.
 /// toml files are very easy to read and modify for people.
 /// They also are directly converted to struct instances.
-/// 
+///
 /// For example,
 /// ```no_run
 /// struct Example {
@@ -459,7 +393,7 @@ where
 /// [a]
 /// x = -256
 /// y = "bonjour"
-/// 
+///
 /// b: 34
 /// ```
 /// There are two things I would like to note:
@@ -472,12 +406,13 @@ where
 /// They would just be shown as a new area without an empty line.
 pub fn save_toml<T>(path: &str, data: &T)
 where
-    T: Serialize + DeserializeOwned
+    T: Serialize + DeserializeOwned,
 {
     let file = File::create(path);
     match file {
         Ok(mut file) => {
-            file.write_all(toml::to_string(data).unwrap().as_bytes()).unwrap();
+            file.write_all(toml::to_string(data).unwrap().as_bytes())
+                .unwrap();
         }
         Err(e) => {
             panic!("Error opening file: {}", e)
@@ -488,10 +423,10 @@ where
 /// This function loads an implied type from a file.
 /// If the file doesn't exist or can't be read, it will panic.
 /// The type must implement both [Serialize] and [Deserialize].
-/// 
+///
 /// Because it returns an implied type, it cannot be used directly as an implied value;
 /// ```compile_fail
-/// # use crate::file_ops::{save_bin, load_bin, delete};
+/// # use ant::file_ops::{save_bin, load_bin, delete};
 /// let data: String = "Example".to_owned();
 /// save_bin("wont_work.bin", &data);
 /// assert_eq!(data, load_bin("wont_work.bin"));
@@ -499,7 +434,7 @@ where
 /// This produces an error because the compiler does not know what type the loaded data will be when it loads.
 /// Which is normally defined like this:
 /// ```
-/// # use crate::file_ops::{save_bin, load_bin, delete};
+/// # use ant::file_ops::{save_bin, load_bin, delete};
 /// let data: usize = 57;
 /// save_bin("example.bin", &data);
 /// let load: usize = load_bin("example.bin");
@@ -508,7 +443,7 @@ where
 /// ```
 /// Structs can be loaded the same way:
 /// ```
-/// # use crate::file_ops::{save_bin, load_bin, delete};
+/// # use ant::file_ops::{save_bin, load_bin, delete};
 /// # use serde::{Serialize, Deserialize};
 /// #[derive(Serialize, Deserialize, Default)]
 /// # #[derive(Debug, PartialEq)]
@@ -523,23 +458,23 @@ where
 /// assert_eq!(data, load);
 /// ```
 /// It is worth noting that the struct(or anything you're loading) must implement both [Serialize] and [Deserialize].
-pub fn load_bin<T>(path: &str) -> T 
+pub fn load_bin<T>(path: &str) -> T
 where
-    T: Serialize + DeserializeOwned
+    T: Serialize + DeserializeOwned,
 {
-	let serialized = fs::read(path).expect("Failed to read data from file");
-	return bincode::deserialize(&serialized).expect("Deserialization failed")
+    let serialized = fs::read(path).expect("Failed to read data from file");
+    return bincode::deserialize(&serialized).expect("Deserialization failed");
 }
 
 pub fn load_toml<T>(path: &str) -> T
 where
-    T: Serialize + DeserializeOwned
+    T: Serialize + DeserializeOwned,
 {
     let mut file = File::open(path).unwrap();
     let mut content = String::new();
     file.read_to_string(&mut content).unwrap();
     let out: T = toml::from_str(&content).unwrap();
-    return out
+    return out;
 }
 /// Loads the file, then reads the file.
 /// If the [deserialization](Deserialize::deserialize) fails,
@@ -560,7 +495,7 @@ where
 /// ```
 /// # use toml;
 /// # use serde::{Serialize, Deserialize};
-/// # use crate::file_ops::{load_toml_or_generate_default, delete};
+/// # use ant::file_ops::{load_toml_or_generate_default, delete};
 /// # use std::fs::File;
 /// # use std::io::Write;
 /// # #[derive(Debug, PartialEq)]
@@ -584,7 +519,7 @@ where
 /// Because one of the fields was invalid, the file got overwritten to be the default.
 pub fn load_toml_or_generate_default<T>(path: &str) -> T
 where
-    T: Serialize + DeserializeOwned + Default
+    T: Serialize + DeserializeOwned + Default,
 {
     if !valid(path) {
         save_toml(path, &T::default());
@@ -593,13 +528,11 @@ where
     let mut content: String = String::new();
     file.read_to_string(&mut content).unwrap();
     match toml::from_str(&content) {
-        Ok(data) => {
-            return data
-        }
+        Ok(data) => return data,
         Err(_) => {
             save_toml(path, &T::default());
             let out: T = load_toml(path);
-            return out
+            return out;
         }
     }
 }
@@ -607,13 +540,13 @@ where
 /// It doesn't have much use except that I like having all the operations.
 /// Also, I don't have to unwrap it
 /// and [delete()] is shorter than [fs::remove_file()].unwrap()
-/// 
+///
 /// TLDR:
 /// [fs::remove_file] but no result and shorter to write
 pub fn delete<P: AsRef<Path>>(path: P) {
-	if let Err(err) = fs::remove_file(path) {
-		panic!("Failed to delete file: {}", err)
-	}
+    if let Err(err) = fs::remove_file(path) {
+        panic!("Failed to delete file: {}", err)
+    }
 }
 
 /// This checks if the path leads to a file.
@@ -621,16 +554,16 @@ pub fn delete<P: AsRef<Path>>(path: P) {
 /// If the path does not lead to a file, it will return false.
 /// # Example:
 /// ```
-/// # use crate::file_ops::{save_bin, delete, valid};
+/// # use ant::file_ops::{save_bin, delete, valid};
 /// let data: bool = false;
 /// save_bin("example.bin", &data);
 /// assert!(valid("example.bin"));
 /// # delete("example.bin");
 /// ```
 pub fn valid(path: &str) -> bool {
-	let metadata = std::fs::metadata(path);
+    let metadata = std::fs::metadata(path);
     if let Ok(metadata) = metadata {
-        return metadata.is_file()
+        return metadata.is_file();
     }
-    return false
+    return false;
 }
