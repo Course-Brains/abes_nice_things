@@ -3,23 +3,22 @@ pub mod ai;
 #[cfg(any(debug_assertions, feature = "file_ops"))]
 pub mod file_ops;
 
+use rand::distributions::uniform::{SampleRange, SampleUniform};
+use serde::{Serialize, Deserialize};
 use std::{
-    ops::{Deref, DerefMut, Range, RangeInclusive},
-    sync::{Mutex, MutexGuard, mpsc},
-    cmp::Ordering,
     borrow::{Borrow, BorrowMut},
+    cmp::Ordering,
     hash::{Hash, Hasher},
     io::{stdin, stdout, Write},
-    thread,
     marker::Send,
+    ops::{Deref, DerefMut, Range, RangeBounds, RangeInclusive},
+    sync::{Mutex, MutexGuard},
+    thread::{self, JoinHandle},
 };
-use rand::distributions::uniform::{SampleRange, SampleUniform};
 
 pub mod prelude {
     pub use crate::{
-        debug_println,
-        input,
-        PartialIterOrd
+        assert_pattern, assert_pattern_ne, debug, debug_println, input, PartialIterOrd,
     };
 }
 
@@ -33,6 +32,46 @@ macro_rules! debug_println {
         #[cfg(debug_assertions)]
         println!("[DEBUG] {}", format_args!($($arg)*));
     }
+}
+#[macro_export]
+macro_rules! assert_pattern {
+    ($item: ident, $pattern: pat_param) => {
+        if let $pattern = $item {}
+        else {
+            panic!("Item did not match variant");
+        }
+    };
+    ($item: ident, $pattern: pat_param, $($arg:tt)*) => {
+        if let $pattern = $item {}
+        else {
+            panic!("{}", format_args!($($arg)*));
+        }
+    };
+}
+#[macro_export]
+macro_rules! assert_pattern_ne {
+    ($item: ident, $pattern: pat_param) => {
+        if let $pattern = $item {
+            panic!("Item matched variant");
+        }
+    };
+    ($item: ident, $pattern: pat_param, $($arg:tt)*) => {
+        if let $pattern = $item {
+            panic!("{}", format_args!($($arg)*));
+        }
+    };
+}
+#[macro_export]
+macro_rules! debug {
+    ($debug: stmt) => {
+        #[cfg(debug_assertions)]
+        $debug;
+    };
+    ($debug: block) => {
+        if cfg!(debug_assertions) {
+            $debug;
+        }
+    };
 }
 
 pub struct OnceLockMethod<'a, T> {
@@ -92,14 +131,14 @@ impl<T> Weight<T> {
     pub const fn as_ref(&self) -> Weight<&T> {
         return Weight {
             inner: &self.inner,
-            weight: self.weight
-        }
+            weight: self.weight,
+        };
     }
     pub fn as_mut(&mut self) -> Weight<&mut T> {
         return Weight {
             inner: &mut self.inner,
-            weight: self.weight
-        }
+            weight: self.weight,
+        };
     }
     pub fn as_deref(&self) -> Weight<&T::Target>
     where
@@ -108,149 +147,149 @@ impl<T> Weight<T> {
         return Weight {
             inner: self.inner.deref(),
             weight: self.weight,
-        }
+        };
     }
     pub fn as_deref_mut(&mut self) -> Weight<&mut T::Target>
     where
-        T: DerefMut
+        T: DerefMut,
     {
         return Weight {
             inner: self.inner.deref_mut(),
             weight: self.weight,
-        }
+        };
     }
     // For comparing Weight and usize
     pub const fn lt_direct(&self, other: usize) -> bool {
-        return self.weight < other
+        return self.weight < other;
     }
     pub const fn le_direct(&self, other: usize) -> bool {
-        return self.weight <= other
+        return self.weight <= other;
     }
     pub const fn gt_direct(&self, other: usize) -> bool {
-        return self.weight > other
+        return self.weight > other;
     }
     pub const fn ge_direct(&self, other: usize) -> bool {
-        return self.weight >= other
+        return self.weight >= other;
     }
     pub const fn partial_cmp_direct(&self, other: usize) -> Option<Ordering> {
         if self.weight > other {
-            return Some(Ordering::Greater)
+            return Some(Ordering::Greater);
         }
         if self.weight < other {
-            return Some(Ordering::Less)
+            return Some(Ordering::Less);
         }
         if self.weight == other {
-            return Some(Ordering::Equal)
+            return Some(Ordering::Equal);
         }
-        return None
+        return None;
     }
     pub const fn cmp_direct(&self, other: usize) -> Ordering {
         if self.weight > other {
-            return Ordering::Greater
+            return Ordering::Greater;
         }
         if self.weight < other {
-            return Ordering::Less
+            return Ordering::Less;
         }
-        return Ordering::Equal
+        return Ordering::Equal;
     }
     // Ord methods if T doesn't impl Eq
     pub fn max(self, other: Self) -> Self {
         if self > other {
-            return self
+            return self;
         }
-        return other
+        return other;
     }
     pub fn min(self, other: Self) -> Self {
         if self <= other {
-            return self
+            return self;
         }
-        return other
+        return other;
     }
     pub fn clamp(self, min: Self, max: Self) -> Self {
         assert!(min <= max);
         if self < min {
-            return min
+            return min;
         }
         if self > max {
-            return max
+            return max;
         }
-        return self
+        return self;
     }
     pub fn cmp(&self, other: &Self) -> Ordering {
         if self < other {
-            return Ordering::Less
+            return Ordering::Less;
         }
         if self > other {
-            return Ordering::Greater
+            return Ordering::Greater;
         }
-        return Ordering::Equal
+        return Ordering::Equal;
     }
 }
 impl<T> PartialEq for Weight<T> {
     fn eq(&self, other: &Self) -> bool {
-        return self.weight == other.weight
+        return self.weight == other.weight;
     }
     fn ne(&self, other: &Self) -> bool {
-        return self.weight != other.weight
+        return self.weight != other.weight;
     }
 }
 impl<T> PartialOrd for Weight<T> {
     fn lt(&self, other: &Self) -> bool {
-        return self.weight < other.weight
+        return self.weight < other.weight;
     }
     fn le(&self, other: &Self) -> bool {
-        return self.weight <= other.weight
+        return self.weight <= other.weight;
     }
     fn gt(&self, other: &Self) -> bool {
-        return self.weight > other.weight
+        return self.weight > other.weight;
     }
     fn ge(&self, other: &Self) -> bool {
-        return self.weight >= other.weight
+        return self.weight >= other.weight;
     }
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         if self < other {
-            return Some(Ordering::Less)
+            return Some(Ordering::Less);
         }
         if self > other {
-            return Some(Ordering::Greater)
+            return Some(Ordering::Greater);
         }
         if self == other {
-            return Some(Ordering::Equal)
+            return Some(Ordering::Equal);
         }
-        return None
+        return None;
     }
 }
 impl<T: Eq> Ord for Weight<T> {
     fn max(self, other: Self) -> Self {
         if self > other {
-            return self
+            return self;
         }
-        return other
+        return other;
     }
     fn min(self, other: Self) -> Self {
         if self <= other {
-            return self
+            return self;
         }
-        return other
+        return other;
     }
     fn clamp(self, min: Self, max: Self) -> Self {
         assert!(min <= max);
         if self < min {
-            return min
+            return min;
         }
         if self > max {
-            return max
+            return max;
         }
-        return self
+        return self;
     }
     fn cmp(&self, other: &Self) -> Ordering {
         if self < other {
-            return Ordering::Less
+            return Ordering::Less;
         }
         if self > other {
-            return Ordering::Greater
+            return Ordering::Greater;
         }
-        return Ordering::Equal
+        return Ordering::Equal;
     }
 }
 impl<T: Default> Default for Weight<T> {
@@ -258,7 +297,7 @@ impl<T: Default> Default for Weight<T> {
         return Weight {
             inner: Default::default(),
             weight: Default::default(),
-        }
+        };
     }
 }
 impl<T: Clone> Clone for Weight<T> {
@@ -269,24 +308,24 @@ impl<T: Clone> Clone for Weight<T> {
         return Weight {
             inner: self.inner.clone(),
             weight: self.weight.clone(),
-        }
+        };
     }
 }
 impl<T: Copy> Copy for Weight<T> {}
 impl<T> Borrow<T> for Weight<T> {
     fn borrow(&self) -> &T {
-        return &self.inner
+        return &self.inner;
     }
 }
 impl<T> BorrowMut<T> for Weight<T> {
     fn borrow_mut(&mut self) -> &mut T {
-        return &mut self.inner
+        return &mut self.inner;
     }
 }
 impl<T: Iterator> Iterator for Weight<T> {
     type Item = T::Item;
     fn next(&mut self) -> Option<Self::Item> {
-        return self.inner.next()
+        return self.inner.next();
     }
 }
 impl<T: DoubleEndedIterator> DoubleEndedIterator for Weight<T> {
@@ -304,7 +343,7 @@ impl<T: Hash> Hash for Weight<T> {
 impl<T> Unpin for Weight<T> {}
 
 /// A concrete type for storing the range types while Sized.
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug, Serialize, Deserialize)]
 pub enum Ranges<T> {
     Range(Range<T>),
     Inclusive(RangeInclusive<T>),
@@ -312,20 +351,20 @@ pub enum Ranges<T> {
 impl<T> Ranges<T> {
     pub fn unwrap_range(self) -> Range<T> {
         if let Ranges::Range(range) = self {
-            return range
+            return range;
         }
         panic!("Attempted to unwrap to range on non-range value")
     }
     pub fn unwrap_inclusive(self) -> RangeInclusive<T> {
         if let Ranges::Inclusive(range) = self {
-            return range
+            return range;
         }
         panic!("Attampted to unwrap to inclusive range on non inclusive range value")
     }
 }
 impl<T: Default> Default for Ranges<T> {
     fn default() -> Self {
-        return Ranges::Range(Default::default())
+        return Ranges::Range(Default::default());
     }
 }
 impl<T: Clone> Clone for Ranges<T> {
@@ -344,33 +383,39 @@ impl<T: Hash> Hash for Ranges<T> {
 impl<T: SampleUniform + PartialOrd> SampleRange<T> for Ranges<T> {
     fn sample_single<R: rand::prelude::RngCore + ?Sized>(self, rng: &mut R) -> T {
         match self {
-            Ranges::Range(range) => {
-                return range.sample_single(rng)
-            }
-            Ranges::Inclusive(range) => {
-                return range.sample_single(rng)
-            }
+            Ranges::Range(range) => return range.sample_single(rng),
+            Ranges::Inclusive(range) => return range.sample_single(rng),
         }
     }
     fn is_empty(&self) -> bool {
         match self {
-            Ranges::Range(range) => {
-                return range.is_empty()
-            }
-            Ranges::Inclusive(range) => {
-                return range.is_empty()
-            }
+            Ranges::Range(range) => return range.is_empty(),
+            Ranges::Inclusive(range) => return range.is_empty(),
         }
     }
 }
 impl<T> From<Range<T>> for Ranges<T> {
     fn from(value: Range<T>) -> Self {
-        return Ranges::Range(value)
+        return Ranges::Range(value);
     }
 }
 impl<T> From<RangeInclusive<T>> for Ranges<T> {
     fn from(value: RangeInclusive<T>) -> Self {
-        return Ranges::Inclusive(value)
+        return Ranges::Inclusive(value);
+    }
+}
+impl<T> RangeBounds<T> for Ranges<T> {
+    fn start_bound(&self) -> std::ops::Bound<&T> {
+        match self {
+            Ranges::Range(range) => return range.start_bound(),
+            Ranges::Inclusive(range) => return range.start_bound(),
+        }
+    }
+    fn end_bound(&self) -> std::ops::Bound<&T> {
+        match self {
+            Ranges::Range(range) => return range.end_bound(),
+            Ranges::Inclusive(range) => return range.end_bound(),
+        }
     }
 }
 
@@ -398,12 +443,8 @@ pub fn input() -> String {
     }
     return string;
 }
-pub fn input_thread() -> mpsc::Receiver<String> {
-    let (tx, rx) = mpsc::channel();
-    thread::spawn(move|| {
-        tx.send(input()).unwrap();
-    });
-    return rx
+pub fn input_thread() -> JoinHandle<String> {
+    return thread::spawn(move || return input());
 }
 pub fn input_cond(cond: impl Fn(&String) -> Result<bool, String>) -> Result<String, String> {
     loop {
@@ -411,25 +452,21 @@ pub fn input_cond(cond: impl Fn(&String) -> Result<bool, String>) -> Result<Stri
         match cond(&input) {
             Ok(value) => {
                 if value {
-                    return Ok(input)
+                    return Ok(input);
                 }
             }
-            Err(error) => {
-                return Err(error)
-            }
+            Err(error) => return Err(error),
         }
     }
 }
-pub fn input_thread_cond(cond: impl Fn(&String) -> Result<bool, String> + Send + 'static) -> mpsc::Receiver<Result<String, String>> {
-    let (tx, rx) = mpsc::channel();
-    thread::spawn(move|| {
-        tx.send(input_cond(cond)).unwrap();
-    });
-    return rx
+pub fn input_thread_cond(
+    cond: impl Fn(&String) -> Result<bool, String> + Send + 'static,
+) -> JoinHandle<Result<String, String>> {
+    return thread::spawn(move || return input_cond(cond));
 }
 
 pub trait PartialIterOrd
-where 
+where
     Self: IntoIterator + Sized,
     <Self as IntoIterator>::Item: PartialOrd,
 {
@@ -443,7 +480,7 @@ where
                 largest_index = index
             }
         }
-        return largest_index
+        return largest_index;
     }
     fn index_min(self) -> usize {
         let mut iter: <Self as IntoIterator>::IntoIter = self.into_iter();
@@ -455,7 +492,37 @@ where
                 smallest_index = index
             }
         }
-        return smallest_index
+        return smallest_index;
+    }
+    fn index_max_by(
+        self,
+        method: impl Fn(&<Self as IntoIterator>::Item, &<Self as IntoIterator>::Item) -> Ordering,
+    ) -> usize {
+        let mut iter: <Self as IntoIterator>::IntoIter = self.into_iter();
+        let mut largest: <Self as IntoIterator>::Item = iter.nth(0).unwrap();
+        let mut largest_index: usize = 0;
+        for (index, value) in iter.enumerate() {
+            if let Ordering::Greater = method(&value, &largest) {
+                largest = value;
+                largest_index = index;
+            }
+        }
+        return largest_index;
+    }
+    fn index_min_by(
+        self,
+        method: impl Fn(&<Self as IntoIterator>::Item, &<Self as IntoIterator>::Item) -> Ordering,
+    ) -> usize {
+        let mut iter: <Self as IntoIterator>::IntoIter = self.into_iter();
+        let mut smallest: <Self as IntoIterator>::Item = iter.nth(0).unwrap();
+        let mut smallest_index: usize = 0;
+        for (index, value) in iter.enumerate() {
+            if let Ordering::Less = method(&value, &smallest) {
+                smallest = value;
+                smallest_index = index;
+            }
+        }
+        return smallest_index;
     }
     fn partial_max(self) -> <Self as IntoIterator>::Item {
         let mut iter: <Self as IntoIterator>::IntoIter = self.into_iter();
@@ -465,7 +532,7 @@ where
                 largest = value
             }
         }
-        return largest
+        return largest;
     }
     fn partial_min(self) -> <Self as IntoIterator>::Item {
         let mut iter: <Self as IntoIterator>::IntoIter = self.into_iter();
@@ -475,9 +542,7 @@ where
                 smallest = value
             }
         }
-        return smallest
+        return smallest;
     }
 }
-impl<I: IntoIterator> PartialIterOrd for I
-where <I as IntoIterator>::Item: PartialOrd
-{}
+impl<I: IntoIterator> PartialIterOrd for I where <I as IntoIterator>::Item: PartialOrd {}

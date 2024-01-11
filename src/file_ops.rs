@@ -165,17 +165,21 @@ impl FileOptions {
         };
     }
     // These methods can't be const because const functions can't take mutable references
-    pub fn create_missing_directories(&mut self, value: bool) {
+    pub fn create_missing_directories(&mut self, value: bool) -> &mut FileOptions {
         self.create_missing_directories = value;
+        return self
     }
-    pub fn create_missing_files(&mut self, value: bool) {
+    pub fn create_missing_files(&mut self, value: bool) -> &mut FileOptions {
         self.create_missing_files = value;
+        return self
     }
-    pub fn reset_on_invalid_deserialization(&mut self, value: bool) {
+    pub fn reset_on_invalid_deserialization(&mut self, value: bool) -> &mut FileOptions {
         self.reset_invalid_deserialization = value;
+        return self
     }
-    pub fn truncate_existing_files(&mut self, value: bool) {
-        self.truncate_existing_files = value
+    pub fn truncate_existing_files(&mut self, value: bool) -> &mut FileOptions {
+        self.truncate_existing_files = value;
+        return self
     }
 
     pub fn generate_path<P: AsRef<Path>>(&self, path: P) -> PathBuf {
@@ -254,7 +258,7 @@ impl FileOptions {
 /// That may seem confusing, but if it doesn't implement [Deserialize], how are you going to read the data?
 /// For example, to store an isize, you would:
 /// ```
-/// # use ant::file_ops::{save_bin, load_bin, delete};
+/// # use abes_nice_things::file_ops::{save_bin, load_bin, delete};
 /// let x: isize = 5;
 /// save_bin("example.bin", &x);
 /// # let load: isize = load_bin("example.bin");
@@ -268,7 +272,7 @@ impl FileOptions {
 /// While storing an [isize] is nice, most of the time, you will be storing much larger data types.
 /// Here is an example of storing a struct containing some basic fields.
 /// ```
-/// # use ant::file_ops::{save_bin, load_bin, delete};
+/// # use abes_nice_things::file_ops::{save_bin, load_bin, delete};
 /// # use serde::{Serialize, Deserialize};
 /// #[derive(Default, Serialize, Deserialize)]
 /// # #[derive(Debug, PartialEq)]
@@ -288,7 +292,7 @@ impl FileOptions {
 /// Including the data inside of structs and enums.
 /// For example:
 /// ```
-/// # use ant::file_ops::{save_bin, load_bin, delete};
+/// # use abes_nice_things::file_ops::{save_bin, load_bin, delete};
 /// # use serde::{Serialize, Deserialize};
 /// #[derive(Default, Serialize, Deserialize)]
 /// # #[derive(Debug, PartialEq)]
@@ -312,7 +316,7 @@ impl FileOptions {
 /// Even if the main data implements both.
 /// For example:
 /// ```compile_fail
-/// # use ant::file_ops::{save_bin, load_bin, delete};
+/// # use abes_nice_things::file_ops::{save_bin, load_bin, delete};
 /// # use serde::{Serialize, Deserialize};
 /// #[derive(Default)]
 /// # #[derive(Debug, PartialEq)]
@@ -426,7 +430,7 @@ where
 ///
 /// Because it returns an implied type, it cannot be used directly as an implied value;
 /// ```compile_fail
-/// # use ant::file_ops::{save_bin, load_bin, delete};
+/// # use abes_nice_things::file_ops::{save_bin, load_bin, delete};
 /// let data: String = "Example".to_owned();
 /// save_bin("wont_work.bin", &data);
 /// assert_eq!(data, load_bin("wont_work.bin"));
@@ -434,7 +438,7 @@ where
 /// This produces an error because the compiler does not know what type the loaded data will be when it loads.
 /// Which is normally defined like this:
 /// ```
-/// # use ant::file_ops::{save_bin, load_bin, delete};
+/// # use abes_nice_things::file_ops::{save_bin, load_bin, delete};
 /// let data: usize = 57;
 /// save_bin("example.bin", &data);
 /// let load: usize = load_bin("example.bin");
@@ -443,7 +447,7 @@ where
 /// ```
 /// Structs can be loaded the same way:
 /// ```
-/// # use ant::file_ops::{save_bin, load_bin, delete};
+/// # use abes_nice_things::file_ops::{save_bin, load_bin, delete};
 /// # use serde::{Serialize, Deserialize};
 /// #[derive(Serialize, Deserialize, Default)]
 /// # #[derive(Debug, PartialEq)]
@@ -495,7 +499,7 @@ where
 /// ```
 /// # use toml;
 /// # use serde::{Serialize, Deserialize};
-/// # use ant::file_ops::{load_toml_or_generate_default, delete};
+/// # use abes_nice_things::file_ops::{load_toml_or_generate_default, delete};
 /// # use std::fs::File;
 /// # use std::io::Write;
 /// # #[derive(Debug, PartialEq)]
@@ -554,7 +558,7 @@ pub fn delete<P: AsRef<Path>>(path: P) {
 /// If the path does not lead to a file, it will return false.
 /// # Example:
 /// ```
-/// # use ant::file_ops::{save_bin, delete, valid};
+/// # use abes_nice_things::file_ops::{save_bin, delete, valid};
 /// let data: bool = false;
 /// save_bin("example.bin", &data);
 /// assert!(valid("example.bin"));
@@ -566,4 +570,33 @@ pub fn valid(path: &str) -> bool {
         return metadata.is_file();
     }
     return false;
+}
+
+pub mod file_pointer {
+    use super::*;
+    use std::fs;
+    use std::io::{Seek, SeekFrom};
+    type Location = u64;
+    pub struct File {
+        path: PathBuf
+    }
+    impl File {
+        pub fn read(&self, pointer: &Pointer) -> Vec<u8> {
+            let mut file = fs::File::open(&self.path).unwrap();
+            file.seek(SeekFrom::Start(pointer.location as u64)).unwrap();
+            let mut buffer: Vec<u8> = Vec::new();
+            buffer.resize(pointer.size as usize, 0);
+            file.read_exact(&mut buffer).unwrap();
+            return buffer
+        }
+        pub fn write(&self, pointer: &Pointer, data: &[u8]) {
+            let mut file = fs::File::open(&self.path).unwrap();
+            file.seek(SeekFrom::Start(pointer.location as u64)).unwrap();
+            file.write_all(data).unwrap();
+        }
+    }
+    pub struct Pointer {
+        location: Location,
+        size: usize,
+    }
 }
