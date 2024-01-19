@@ -10,10 +10,8 @@ use std::{
     cmp::Ordering,
     hash::{Hash, Hasher},
     io::{stdin, stdout, Write},
-    marker::Send,
     ops::{Deref, DerefMut, Range, RangeBounds, RangeInclusive},
     sync::{Mutex, MutexGuard},
-    thread::{self, JoinHandle},
 };
 
 pub mod prelude {
@@ -108,6 +106,9 @@ impl<'a, T> OnceLockMethod<'a, T> {
             return true;
         }
         return false;
+    }
+    pub unsafe fn set(&self, value: T) {
+        *self.inner.lock().unwrap() = Some(value)
     }
 }
 /// Stores a type and a weight associated with it,
@@ -443,9 +444,6 @@ pub fn input() -> String {
     }
     return string;
 }
-pub fn input_thread() -> JoinHandle<String> {
-    return thread::spawn(move || return input());
-}
 pub fn input_cond(cond: impl Fn(&String) -> Result<bool, String>) -> Result<String, String> {
     loop {
         let input: String = input();
@@ -459,10 +457,22 @@ pub fn input_cond(cond: impl Fn(&String) -> Result<bool, String>) -> Result<Stri
         }
     }
 }
-pub fn input_thread_cond(
-    cond: impl Fn(&String) -> Result<bool, String> + Send + 'static,
-) -> JoinHandle<Result<String, String>> {
-    return thread::spawn(move || return input_cond(cond));
+pub fn input_allow(allow: &[String]) -> String {
+    loop {
+        let input = input();
+        if allow.contains(&input) {
+            return input
+        }
+    }
+}
+pub fn input_allow_msg(allow: &[String], msg: &str) -> String {
+    loop {
+        println!("{msg}");
+        let input = input();
+        if allow.contains(&input) {
+            return input
+        }
+    }
 }
 
 pub trait PartialIterOrd

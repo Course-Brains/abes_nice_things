@@ -3,10 +3,11 @@ use std::{
     thread,
     path::{Path, PathBuf},
     cell::OnceCell,
+    fs::metadata
 };
 
 use crate::{
-    file_ops::FileOptions,
+    file_ops::{load_bin, save_bin},
     Ranges
 };
 
@@ -79,7 +80,7 @@ impl<'a> Trainer<'a> {
         self.max_change.set(range.into()).unwrap();
         return self
     }
-    pub fn train(&self, method: impl Fn(&mut [Net])) {
+    pub fn train(&self, method: impl Fn(&mut [Net], &mut Net)) {
         assert_ne!(self.nodes.get().unwrap(), &0, "Number of nodes cannot be 0");
         assert_ne!(self.layers.get().unwrap(), &0, "Number of layers cannot be 0");
         assert_ne!(self.nets, 0, "Number of nets cannot be 0");
@@ -89,18 +90,23 @@ impl<'a> Trainer<'a> {
             TrainMode::Sequential => self.sequential_train(method)
         }
     }
-    fn sequential_train(&self, method: impl Fn(&mut [Net])) {
+    fn sequential_train(&self, method: impl Fn(&mut [Net], &mut Net)) {
         let mut nets: Vec<Net>;
         let mut iter: usize = 0;
         let mut best: Net;
         let max_change: &Ranges<f32> = self.max_change.get().unwrap();
         if let Some(path) = &self.source {
-            best = FileOptions::new()
-                .create_missing_directories(true)
-                .create_missing_files(true)
-                .reset_on_invalid_deserialization(true)
-                .load(path)
-            ;
+            if metadata(path).unwrap().is_file() {
+                best = load_bin(path)
+            }
+            else {
+                best = Net::new(
+                    *self.nodes.get().expect("Number of nodes must be defined"),
+                    *self.layers.get().expect("Number of layers must be defined"),
+                    *self.inputs.get().expect("number of inputs must be defined"),
+                    *self.outputs.get().expect("Number of outputs must be defined"),
+                );
+            }
         }
         else {
             best = Net::new(
@@ -118,7 +124,7 @@ impl<'a> Trainer<'a> {
             for net in nets.iter_mut() {
                 net.randomize_weights(max_change)
             }
-            method(&mut nets);
+            method(&mut nets, &mut best);
             for net in nets.iter() {
                 if net.score > best.score {
                     best = net.clone();
@@ -133,11 +139,7 @@ impl<'a> Trainer<'a> {
             }
         }
         if let Some(path) = &self.source {
-            FileOptions::new()
-                .create_missing_directories(true)
-                .create_missing_files(true)
-                .truncate_existing_files(true)
-                .save(best, path).unwrap()
+            save_bin(path, &best);
         }
     }
 }
@@ -245,6 +247,7 @@ impl Node {
             debug_assert_ne!(weight, &Value::INFINITY, "Weight was infinity");
             value += inputs[index] * weight;
         }
+        value /= self.weights.iter().sum::<Value>();
         debug_assert_ne!(value, Value::INFINITY, "Node generated infinity");
         return value
     }

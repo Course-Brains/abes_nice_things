@@ -332,7 +332,7 @@ impl FileOptions {
 /// let example: Example = Default::default();
 /// save_bin("example.bin", &example);
 /// ```
-pub fn save_bin<T>(path: &str, data: &T)
+pub fn save_bin<T, P: AsRef<Path>>(path: P, data: &T)
 where
     T: Serialize + DeserializeOwned,
 {
@@ -408,13 +408,14 @@ where
 /// It uses the empty line to show that it is not a part of a.
 /// Similarly, that also allows for infinitely many sub structs.
 /// They would just be shown as a new area without an empty line.
-pub fn save_toml<T>(path: &str, data: &T)
+pub fn save_toml<T, P: AsRef<Path>>(path: P, data: &T)
 where
     T: Serialize + DeserializeOwned,
 {
     let file = File::create(path);
     match file {
         Ok(mut file) => {
+            
             file.write_all(toml::to_string(data).unwrap().as_bytes())
                 .unwrap();
         }
@@ -462,7 +463,7 @@ where
 /// assert_eq!(data, load);
 /// ```
 /// It is worth noting that the struct(or anything you're loading) must implement both [Serialize] and [Deserialize].
-pub fn load_bin<T>(path: &str) -> T
+pub fn load_bin<T, P: AsRef<Path>>(path: P) -> T
 where
     T: Serialize + DeserializeOwned,
 {
@@ -470,7 +471,7 @@ where
     return bincode::deserialize(&serialized).expect("Deserialization failed");
 }
 
-pub fn load_toml<T>(path: &str) -> T
+pub fn load_toml<T, P: AsRef<Path>>(path: P) -> T
 where
     T: Serialize + DeserializeOwned,
 {
@@ -572,16 +573,28 @@ pub fn valid(path: &str) -> bool {
     return false;
 }
 
+pub fn client_compile<P: AsRef<Path>>(path: P) {
+
+}
+
 pub mod file_pointer {
     use super::*;
     use std::fs;
     use std::io::{Seek, SeekFrom};
+    use std::collections::VecDeque;
     type Location = u64;
     pub struct File {
-        path: PathBuf
+        path: PathBuf,
+        allocator: Allocator
     }
     impl File {
-        pub fn read(&self, pointer: &Pointer) -> Vec<u8> {
+        pub fn new() -> Self {
+            return File {
+                path: Default::default(),
+                allocator: Allocator::new(),
+            }
+        }
+        pub unsafe fn read_bytes_unsafe(&self, pointer: &Pointer) -> Vec<u8> {
             let mut file = fs::File::open(&self.path).unwrap();
             file.seek(SeekFrom::Start(pointer.location as u64)).unwrap();
             let mut buffer: Vec<u8> = Vec::new();
@@ -589,14 +602,99 @@ pub mod file_pointer {
             file.read_exact(&mut buffer).unwrap();
             return buffer
         }
-        pub fn write(&self, pointer: &Pointer, data: &[u8]) {
+        pub unsafe fn write_bytes_unsafe(&self, pointer: &Pointer, data: &[u8]) {
             let mut file = fs::File::open(&self.path).unwrap();
             file.seek(SeekFrom::Start(pointer.location as u64)).unwrap();
             file.write_all(data).unwrap();
         }
+        pub fn set_len(&self, size: u64) {
+            fs::File::open(&self.path).unwrap().set_len(size).unwrap();
+        }
+        pub fn len(&self) -> u64 {
+            return fs::File::open(&self.path).unwrap().metadata().unwrap().len()
+        }
+        pub fn min_len(&self, size: u64) {
+            if self.len() < size {
+                self.set_len(size);
+            }
+        }
+        pub fn allocate_empty(&mut self, size: usize) -> Result<Location, ()> {
+            self.allocator.allocate_empty(size)
+        }
     }
-    pub struct Pointer {
+    struct Allocator {
+        inner: VecDeque<Alloc>
+    }
+    impl Allocator {
+        const fn new() -> Self {
+            return Allocator {
+                inner: VecDeque::new(),
+            }
+        }
+        fn allocate_empty(&mut self, size: usize) -> Result<Location, ()> {
+            self.inner.make_contiguous();
+            let mut location: Location;
+            let mut length: usize;
+            self.inner.rotate_right(1);
+            for _ in 0..self.inner.len() {
+                self.inner.rotate_left(1);
+                match self.inner.front().unwrap() {
+                    Alloc::Empty {..} => {
+                        continue
+                    }
+                    Alloc::Filled {location: lo, size: si} => {
+                        location = lo.to_owned();
+                        length = si.to_owned();
+                    }
+                }
+                if length == size {
+                    *self.inner.front_mut().unwrap() = Alloc::new_filled(location, size);
+                    return Ok(location)
+                }
+                if length > size {
+                    *self.inner.front_mut().unwrap() = Alloc::new_filled(location, size);
+                    self.inner.push_front(
+                        Alloc::new_empty(
+                            location+(size as u64),
+                            size-length
+                        )
+                    );
+                }
+            }
+            return Err(())
+        }
+    }
+    #[derive(Copy, Clone)]
+    enum Alloc {
+        Filled {
+            location: Location,
+            size: usize,
+        },
+        Empty {
+            location: Location,
+            size: usize,
+        }
+    }
+    impl Alloc {
+        fn new_filled(location: Location, size: usize) -> Alloc {
+            return Alloc::Filled {
+                location, size
+            }
+        }
+        fn new_empty(location: Location, size: usize) -> Alloc {
+            return Alloc::Empty {
+                location, size
+            }
+        }
+    }
+    pub struct Pointer<'a> {
         location: Location,
         size: usize,
+        file: &'a File
+    }
+    impl Pointer<'_> {
+        pub unsafe fn read_bytes_unsafe(&self) -> Vec<u8> {
+            return self.file.read_bytes_unsafe(self)
+        }
     }
 }
