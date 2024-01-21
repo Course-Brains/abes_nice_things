@@ -96,7 +96,7 @@ impl<'a> Trainer<'a> {
         let mut best: Net;
         let max_change: &Ranges<f32> = self.max_change.get().unwrap();
         if let Some(path) = &self.source {
-            if metadata(path).unwrap().is_file() {
+            if let Ok(_) = metadata(path) {
                 best = load_bin(path)
             }
             else {
@@ -159,7 +159,7 @@ impl Default for Trainer<'_> {
         }
     }
 }
-#[derive(Clone, Deserialize, Serialize, Default)]
+#[derive(Clone, Deserialize, Serialize, Default, PartialEq, Debug)]
 pub struct Net {
     nodes: Vec<Vec<Node>>,
     outputs: Vec<Node>,
@@ -207,11 +207,16 @@ impl Net {
             }
             previous = current;
         }
+        debug_assert_eq!(
+            previous.len(), self.nodes.len(),
+            "Outputs: {}, nodes: {}", previous.len(), self.nodes.len()
+        );
         // outputs
         current = Vec::new();
         for output in self.outputs.iter() {
             current.push(output.gen_value(&previous))
         }
+        debug_assert_eq!(current.len(), self.outputs.len());
         return current
     }
     fn randomize_weights(&mut self, max_change: &Ranges<Value>) {
@@ -225,7 +230,7 @@ impl Net {
         }
     }
 }
-#[derive(Default, Clone, Deserialize, Serialize)]
+#[derive(Default, Clone, Deserialize, Serialize, PartialEq, Debug)]
 pub struct Node {
     weights: Vec<Value>,
 }
