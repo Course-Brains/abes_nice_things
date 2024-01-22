@@ -3,12 +3,13 @@ use std::{
     thread,
     path::{Path, PathBuf},
     cell::OnceCell,
-    fs::metadata
+    fs::metadata,
+    ops::RangeBounds,
 };
 
 use crate::{
     file_ops::{load_bin, save_bin},
-    Ranges
+    Ranges,
 };
 
 use serde::{Deserialize, Serialize};
@@ -27,6 +28,7 @@ pub struct Trainer<'a> {
     condition: OnceCell<EndCondition<'a>>,
     source: Option<PathBuf>,
     max_change: OnceCell<Ranges<Value>>,
+    max_weight: Option<Ranges<Value>>
 }
 impl<'a> Trainer<'a> {
     pub fn new() -> Self {
@@ -80,6 +82,14 @@ impl<'a> Trainer<'a> {
         self.max_change.set(range.into()).unwrap();
         return self
     }
+    pub fn max_weight(&mut self, range: std::ops::Range<Value>) -> &mut Self {
+        self.max_weight = Some(range.into());
+        return self
+    }
+    pub fn max_weight_inclusive(&mut self, range: std::ops::RangeInclusive<Value>) -> &mut Self {
+        self.max_weight = Some(range.into());
+        return self
+    }
     pub fn train(&self, method: impl Fn(&mut [Net], &mut Net)) {
         assert_ne!(self.nodes.get().unwrap(), &0, "Number of nodes cannot be 0");
         assert_ne!(self.layers.get().unwrap(), &0, "Number of layers cannot be 0");
@@ -87,42 +97,35 @@ impl<'a> Trainer<'a> {
         assert_ne!(self.inputs.get().unwrap(), &0, "Number of inputs cannot be 0");
         assert_ne!(self.outputs.get().unwrap(), &0, "Number of outputs cannot be 0");
         match self.mode.get().unwrap() {
-            TrainMode::Sequential => self.sequential_train(method)
+            TrainMode::Sequential => self.sequential_train(method),
         }
     }
     fn sequential_train(&self, method: impl Fn(&mut [Net], &mut Net)) {
         let mut nets: Vec<Net>;
         let mut iter: usize = 0;
-        let mut best: Net;
-        let max_change: &Ranges<f32> = self.max_change.get().unwrap();
+        let max_change: &Ranges<Value> = self.max_change.get().unwrap();
+        let max_weight: &Option<Ranges<Value>> = &self.max_weight;
+        let mut best: Option<Net> = None;
         if let Some(path) = &self.source {
             if let Ok(_) = metadata(path) {
-                best = load_bin(path)
-            }
-            else {
-                best = Net::new(
-                    *self.nodes.get().expect("Number of nodes must be defined"),
-                    *self.layers.get().expect("Number of layers must be defined"),
-                    *self.inputs.get().expect("number of inputs must be defined"),
-                    *self.outputs.get().expect("Number of outputs must be defined"),
-                );
+                best = Some(load_bin(path));
             }
         }
-        else {
-            best = Net::new(
+        let mut best = best.unwrap_or_else(|| {
+            Net::new(
                 *self.nodes.get().expect("Number of nodes must be defined"),
                 *self.layers.get().expect("Number of layers must be defined"),
                 *self.inputs.get().expect("number of inputs must be defined"),
                 *self.outputs.get().expect("Number of outputs must be defined"),
-            );
-        }
+            )
+        });
         loop {
             nets = Vec::new();
             for _ in 0..self.nets {
-                nets.push(best.clone())
+                nets.push(best.clone());
             }
             for net in nets.iter_mut() {
-                net.randomize_weights(max_change)
+                net.randomize_weights(max_change, max_weight);
             }
             method(&mut nets, &mut best);
             for net in nets.iter() {
@@ -156,6 +159,7 @@ impl Default for Trainer<'_> {
             condition: OnceCell::new(),
             source: None,
             max_change: OnceCell::new(),
+            max_weight: None
         }
     }
 }
@@ -167,7 +171,7 @@ pub struct Net {
     pub score: Value,
 }
 impl Net {
-    fn new(nodes: usize, layers: usize, inputs: usize, outputs: usize) -> Net {
+    pub fn new(nodes: usize, layers: usize, inputs: usize, outputs: usize) -> Net {
         let mut node_list: Vec<Vec<Node>> = Vec::new();
         let mut temp: Vec<Node> = Vec::new();
         for _ in 0..nodes {
@@ -219,13 +223,13 @@ impl Net {
         debug_assert_eq!(current.len(), self.outputs.len());
         return current
     }
-    fn randomize_weights(&mut self, max_change: &Ranges<Value>) {
+    fn randomize_weights(&mut self, max_change: &Ranges<Value>, max_weight: &Option<Ranges<Value>>) {
         for output in self.outputs.iter_mut() {
-            output.randomize_weights(max_change)
+            output.randomize_weights(max_change, max_weight)
         }
         for nodes in self.nodes.iter_mut() {
             for node in nodes.iter_mut() {
-                node.randomize_weights(max_change)
+                node.randomize_weights(max_change, max_weight)
             }
         }
     }
@@ -248,25 +252,41 @@ impl Node {
     pub fn gen_value(&self, inputs: &[Value]) -> Value {
         debug_assert_eq!(self.weights.len(), inputs.len(), "Weights and inputs are not same length");
         let mut value: Value = Default::default();
+        let sum = self.weights.iter().sum::<Value>();
         for (index, weight) in self.weights.iter().enumerate() {
             debug_assert_ne!(weight, &Value::INFINITY, "Weight was infinity");
-            value += inputs[index] * weight;
+            value += (inputs[index] * weight)/sum;
         }
-        value /= self.weights.iter().sum::<Value>();
         debug_assert_ne!(value, Value::INFINITY, "Node generated infinity");
         return value
     }
-    fn randomize_weights(&mut self, max_change: &Ranges<Value>) {
+    fn randomize_weights(&mut self, max_change: &Ranges<Value>, max_weight: &Option<Ranges<Value>>) {
         for weight in self.weights.iter_mut() {
-            let mut rng = thread_rng();
-            *weight += rng.gen_range(max_change.to_owned());
+            match max_weight {
+                Some(max_weight) => {
+                    let mut value: Value;
+                    loop {
+                        value = weight.to_owned();
+                        let mut rng = thread_rng();
+                        value += rng.gen_range(max_change.to_owned());
+                        if max_weight.contains(&value) {
+                            *weight += rng.gen_range(max_change.to_owned());
+                            break
+                        }
+                    }
+                }
+                None => {
+                    let mut rng = thread_rng();
+                    *weight += rng.gen_range(max_change.to_owned());
+                }
+            }
         }
     }
 }
 
 #[derive(Debug)]
 enum TrainMode {
-    Sequential
+    Sequential,
 }
 enum EndCondition<'a> {
     Iteration(usize),
