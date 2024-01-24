@@ -3,8 +3,8 @@ use std::{
     thread,
     path::{Path, PathBuf},
     cell::OnceCell,
-    fs::metadata,
-    ops::RangeBounds,
+    fs::metadata, ops::RangeBounds,
+    sync::Mutex,
 };
 
 use crate::{
@@ -62,11 +62,18 @@ impl<'a> Trainer<'a> {
         self.mode.set(TrainMode::Sequential).unwrap();
         return self
     }
+    pub fn thread(&mut self, threads: usize) -> &mut Self {
+        self.mode.set(TrainMode::Threaded(threads)).unwrap();
+        return self
+    }
     pub fn cond_iter(&mut self, threshold: usize) -> &mut Self {
         self.condition.set(EndCondition::Iteration(threshold)).unwrap();
         return self
     }
-    pub fn cond_method(&mut self, method: &'a impl Fn(&[Net]) -> bool) -> &mut Self {
+    pub fn cond_method(
+        &mut self,
+        method: &'a (dyn (Fn(&[Net]) -> bool) + std::marker::Send + std::marker::Sync),
+    ) -> &mut Self {
         self.condition.set(EndCondition::Method(method)).unwrap();
         return self
     }
@@ -90,28 +97,19 @@ impl<'a> Trainer<'a> {
         self.max_weight = Some(range.into());
         return self
     }
-    pub fn train(&self, method: impl Fn(&mut [Net], &mut Net)) {
+    pub fn train(&self, method: impl Fn(&mut [Net], &mut Net) + std::marker::Send + std::marker::Copy) {
         assert_ne!(self.nodes.get().unwrap(), &0, "Number of nodes cannot be 0");
         assert_ne!(self.layers.get().unwrap(), &0, "Number of layers cannot be 0");
         assert_ne!(self.nets, 0, "Number of nets cannot be 0");
         assert_ne!(self.inputs.get().unwrap(), &0, "Number of inputs cannot be 0");
         assert_ne!(self.outputs.get().unwrap(), &0, "Number of outputs cannot be 0");
-        match self.mode.get().unwrap() {
-            TrainMode::Sequential => self.sequential_train(method),
-        }
-    }
-    fn sequential_train(&self, method: impl Fn(&mut [Net], &mut Net)) {
-        let mut nets: Vec<Net>;
-        let mut iter: usize = 0;
-        let max_change: &Ranges<Value> = self.max_change.get().unwrap();
-        let max_weight: &Option<Ranges<Value>> = &self.max_weight;
         let mut best: Option<Net> = None;
         if let Some(path) = &self.source {
             if let Ok(_) = metadata(path) {
                 best = Some(load_bin(path));
             }
         }
-        let mut best = best.unwrap_or_else(|| {
+        let best = best.unwrap_or_else(|| {
             Net::new(
                 *self.nodes.get().expect("Number of nodes must be defined"),
                 *self.layers.get().expect("Number of layers must be defined"),
@@ -119,6 +117,17 @@ impl<'a> Trainer<'a> {
                 *self.outputs.get().expect("Number of outputs must be defined"),
             )
         });
+        match self.mode.get().unwrap() {
+            TrainMode::Sequential => self.sequential_train(best, method),
+            TrainMode::Threaded(threads) => self.thread_train(best, method, *threads)
+        }
+    }
+    fn sequential_train(&self, best: Net, method: impl Fn(&mut [Net], &mut Net)) {
+        let mut nets: Vec<Net>;
+        let mut iter: usize = 0;
+        let max_change: &Ranges<Value> = self.max_change.get().unwrap();
+        let max_weight: &Option<Ranges<Value>> = &self.max_weight;
+        let mut best = best;
         loop {
             nets = Vec::new();
             for _ in 0..self.nets {
@@ -144,6 +153,50 @@ impl<'a> Trainer<'a> {
         if let Some(path) = &self.source {
             save_bin(path, &best);
         }
+    }
+    fn thread_train(
+        &self,
+        best: Net,
+        method: impl Fn(&mut [Net], &mut Net) + std::marker::Send + std::marker::Copy,
+        threads: usize
+    ) {
+        let num_nets = self.nets;
+        let best_mutex = &Mutex::new(best);
+        let max_change = self.max_change.get().unwrap();
+        let max_weight = &self.max_weight;
+        let cond = self.condition.get().unwrap();
+        thread::scope(|s| {
+            for _ in 0..threads {
+                let cond = cond.clone();
+                s.spawn(move || {
+                    let mut nets: Vec<Net> = Vec::new();
+                    let mut best = best_mutex.lock().unwrap().to_owned();
+                    for _ in 0..num_nets {
+                        nets.push(best.to_owned())
+                    }
+                    let mut iter = 0;
+                    loop {
+                        nets = Vec::new();
+                        for _ in 0..num_nets {
+                            let mut current = best.to_owned();
+                            current.randomize_weights(max_change, &max_weight);
+                            nets.push(current);
+                        }
+                        method(&mut nets, &mut best);
+                        for net in nets.iter() {
+                            if net.score > best.score {
+                                best = net.to_owned()
+                            }
+                        }
+                        *best_mutex.lock().unwrap() = best.to_owned();
+                        if cond.check(&iter, &nets) {
+                            break
+                        }
+                        iter += 1;
+                    }
+                });
+            }
+        })
     }
 }
 impl Default for Trainer<'_> {
@@ -264,13 +317,12 @@ impl Node {
         for weight in self.weights.iter_mut() {
             match max_weight {
                 Some(max_weight) => {
-                    let mut value: Value;
+                    let mut value = weight.to_owned();
                     loop {
-                        value = weight.to_owned();
                         let mut rng = thread_rng();
                         value += rng.gen_range(max_change.to_owned());
                         if max_weight.contains(&value) {
-                            *weight += rng.gen_range(max_change.to_owned());
+                            *weight = value;
                             break
                         }
                     }
@@ -287,10 +339,11 @@ impl Node {
 #[derive(Debug)]
 enum TrainMode {
     Sequential,
+    Threaded(usize),
 }
 enum EndCondition<'a> {
     Iteration(usize),
-    Method(&'a dyn Fn(&[Net]) -> bool),
+    Method(&'a (dyn Fn(&[Net]) -> bool + std::marker::Send + std::marker::Sync)),
 }
 impl EndCondition<'_> {
     fn check(&self, iter: &usize, nets: &[Net]) -> bool {
