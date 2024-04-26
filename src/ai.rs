@@ -1,10 +1,11 @@
 use std::{
-    time::Duration,
-    thread,
-    path::{Path, PathBuf},
     cell::OnceCell,
-    fs::metadata, ops::RangeBounds,
+    fs::metadata,
+    ops::RangeBounds,
+    path::{Path, PathBuf},
     sync::Mutex,
+    thread,
+    time::Duration,
 };
 
 use crate::{
@@ -12,8 +13,8 @@ use crate::{
     Ranges,
 };
 
-use serde::{Deserialize, Serialize};
 use rand::{thread_rng, Rng};
+use serde::{Deserialize, Serialize};
 
 pub type Value = f32;
 
@@ -28,81 +29,98 @@ pub struct Trainer<'a> {
     condition: OnceCell<EndCondition<'a>>,
     source: Option<PathBuf>,
     max_change: OnceCell<Ranges<Value>>,
-    max_weight: Option<Ranges<Value>>
+    max_weight: Option<Ranges<Value>>,
 }
 impl<'a> Trainer<'a> {
     pub fn new() -> Self {
-        return Default::default()
+        return Default::default();
     }
     pub fn nodes(&mut self, nodes: usize) -> &mut Self {
         self.nodes.set(nodes).unwrap();
-        return self
+        return self;
     }
     pub fn layers(&mut self, layers: usize) -> &mut Self {
         self.layers.set(layers).unwrap();
-        return self
+        return self;
     }
     pub fn nets(&mut self, nets: usize) -> &mut Self {
         self.nets = nets;
-        return self
+        return self;
     }
     pub fn inputs(&mut self, inputs: usize) -> &mut Self {
         self.inputs.set(inputs).unwrap();
-        return self
+        return self;
     }
     pub fn outputs(&mut self, outputs: usize) -> &mut Self {
         self.outputs.set(outputs).unwrap();
-        return self
+        return self;
     }
     pub fn delay(&mut self, delay: Duration) -> &mut Self {
         self.delay = Some(delay);
-        return self
+        return self;
     }
     pub fn sequential(&mut self) -> &mut Self {
         self.mode.set(TrainMode::Sequential).unwrap();
-        return self
+        return self;
     }
     pub fn thread(&mut self, threads: usize) -> &mut Self {
         self.mode.set(TrainMode::Threaded(threads)).unwrap();
-        return self
+        return self;
     }
     pub fn cond_iter(&mut self, threshold: usize) -> &mut Self {
-        self.condition.set(EndCondition::Iteration(threshold)).unwrap();
-        return self
+        self.condition
+            .set(EndCondition::Iteration(threshold))
+            .unwrap();
+        return self;
     }
     pub fn cond_method(
         &mut self,
         method: &'a (dyn (Fn(&[Net]) -> bool) + std::marker::Send + std::marker::Sync),
     ) -> &mut Self {
         self.condition.set(EndCondition::Method(method)).unwrap();
-        return self
+        return self;
     }
     pub fn source<P: AsRef<Path>>(&mut self, path: P) -> &mut Self {
         self.source = Some(path.as_ref().to_path_buf());
-        return self
+        return self;
     }
     pub fn max_change(&mut self, range: std::ops::Range<Value>) -> &mut Self {
         self.max_change.set(range.into()).unwrap();
-        return self
+        return self;
     }
     pub fn max_change_inclusive(&mut self, range: std::ops::RangeInclusive<Value>) -> &mut Self {
         self.max_change.set(range.into()).unwrap();
-        return self
+        return self;
     }
     pub fn max_weight(&mut self, range: std::ops::Range<Value>) -> &mut Self {
         self.max_weight = Some(range.into());
-        return self
+        return self;
     }
     pub fn max_weight_inclusive(&mut self, range: std::ops::RangeInclusive<Value>) -> &mut Self {
         self.max_weight = Some(range.into());
-        return self
+        return self;
     }
-    pub fn train(&self, method: impl Fn(&mut [Net], &mut Net) + std::marker::Send + std::marker::Copy) {
+    pub fn train(
+        &self,
+        method: impl Fn(&mut [Net], &mut Net) + std::marker::Send + std::marker::Copy,
+    ) {
         assert_ne!(self.nodes.get().unwrap(), &0, "Number of nodes cannot be 0");
-        assert_ne!(self.layers.get().unwrap(), &0, "Number of layers cannot be 0");
+        assert_ne!(
+            self.layers.get().unwrap(),
+            &0,
+            "Number of layers cannot be 0"
+        );
         assert_ne!(self.nets, 0, "Number of nets cannot be 0");
-        assert_ne!(self.inputs.get().unwrap(), &0, "Number of inputs cannot be 0");
-        assert_ne!(self.outputs.get().unwrap(), &0, "Number of outputs cannot be 0");
+        assert_ne!(
+            self.inputs.get().unwrap(),
+            &0,
+            "Number of inputs cannot be 0"
+        );
+        assert_ne!(
+            self.outputs.get().unwrap(),
+            &0,
+            "Number of outputs cannot be 0"
+        );
         let mut best: Option<Net> = None;
         if let Some(path) = &self.source {
             if let Ok(_) = metadata(path) {
@@ -114,12 +132,15 @@ impl<'a> Trainer<'a> {
                 *self.nodes.get().expect("Number of nodes must be defined"),
                 *self.layers.get().expect("Number of layers must be defined"),
                 *self.inputs.get().expect("number of inputs must be defined"),
-                *self.outputs.get().expect("Number of outputs must be defined"),
+                *self
+                    .outputs
+                    .get()
+                    .expect("Number of outputs must be defined"),
             )
         });
         match self.mode.get().unwrap() {
             TrainMode::Sequential => self.sequential_train(best, method),
-            TrainMode::Threaded(threads) => self.thread_train(best, method, *threads)
+            TrainMode::Threaded(threads) => self.thread_train(best, method, *threads),
         }
     }
     fn sequential_train(&self, best: Net, method: impl Fn(&mut [Net], &mut Net)) {
@@ -143,7 +164,7 @@ impl<'a> Trainer<'a> {
                 }
             }
             if self.condition.get().unwrap().check(&iter, &nets) {
-                break
+                break;
             }
             iter += 1;
             if let Some(delay) = self.delay {
@@ -158,13 +179,14 @@ impl<'a> Trainer<'a> {
         &self,
         best: Net,
         method: impl Fn(&mut [Net], &mut Net) + std::marker::Send + std::marker::Copy,
-        threads: usize
+        threads: usize,
     ) {
         let num_nets = self.nets;
         let best_mutex = &Mutex::new(best);
         let max_change = self.max_change.get().unwrap();
         let max_weight = &self.max_weight;
         let cond = self.condition.get().unwrap();
+        let delay = self.delay;
         thread::scope(|s| {
             for _ in 0..threads {
                 let cond = cond.clone();
@@ -190,9 +212,13 @@ impl<'a> Trainer<'a> {
                         }
                         *best_mutex.lock().unwrap() = best.to_owned();
                         if cond.check(&iter, &nets) {
-                            break
+                            println!("Stopping");
+                            break;
                         }
                         iter += 1;
+                        if let Some(delay) = delay {
+                            thread::sleep(delay)
+                        }
                     }
                 });
             }
@@ -212,8 +238,8 @@ impl Default for Trainer<'_> {
             condition: OnceCell::new(),
             source: None,
             max_change: OnceCell::new(),
-            max_weight: None
-        }
+            max_weight: None,
+        };
     }
 }
 #[derive(Clone, Deserialize, Serialize, Default, PartialEq, Debug)]
@@ -246,8 +272,8 @@ impl Net {
             nodes: node_list,
             outputs: output_list,
             inputs: Vec::new(),
-            score: Default::default()
-        }
+            score: Default::default(),
+        };
     }
     pub fn set_inputs(&mut self, value: Vec<Value>) {
         self.inputs = value;
@@ -265,8 +291,11 @@ impl Net {
             previous = current;
         }
         debug_assert_eq!(
-            previous.len(), self.nodes.len(),
-            "Outputs: {}, nodes: {}", previous.len(), self.nodes.len()
+            previous.len(),
+            self.nodes.len(),
+            "Outputs: {}, nodes: {}",
+            previous.len(),
+            self.nodes.len()
         );
         // outputs
         current = Vec::new();
@@ -274,9 +303,13 @@ impl Net {
             current.push(output.gen_value(&previous))
         }
         debug_assert_eq!(current.len(), self.outputs.len());
-        return current
+        return current;
     }
-    fn randomize_weights(&mut self, max_change: &Ranges<Value>, max_weight: &Option<Ranges<Value>>) {
+    fn randomize_weights(
+        &mut self,
+        max_change: &Ranges<Value>,
+        max_weight: &Option<Ranges<Value>>,
+    ) {
         for output in self.outputs.iter_mut() {
             output.randomize_weights(max_change, max_weight)
         }
@@ -298,22 +331,36 @@ impl Node {
         for _ in 0..inputs {
             weights.push(Node::DEFAULT_WEIGHT)
         }
-        return Node {
-            weights
-        }
+        return Node { weights };
     }
     pub fn gen_value(&self, inputs: &[Value]) -> Value {
-        debug_assert_eq!(self.weights.len(), inputs.len(), "Weights and inputs are not same length");
+        /*debug_*/
+        assert_eq!(
+            self.weights.len(),
+            inputs.len(),
+            "Weights and inputs are not same length"
+        );
+        //debug!({
+        for weight in self.weights.iter() {
+            assert!(weight.is_finite());
+            assert!(!weight.is_nan());
+        }
+        //});
         let mut value: Value = Default::default();
         let sum = self.weights.iter().sum::<Value>();
         for (index, weight) in self.weights.iter().enumerate() {
             debug_assert_ne!(weight, &Value::INFINITY, "Weight was infinity");
-            value += (inputs[index] * weight)/sum;
+            value += (inputs[index] * weight) / sum;
         }
-        debug_assert_ne!(value, Value::INFINITY, "Node generated infinity");
-        return value
+        /*debug_*/
+        assert_ne!(value, Value::INFINITY, "Node generated infinity");
+        return value;
     }
-    fn randomize_weights(&mut self, max_change: &Ranges<Value>, max_weight: &Option<Ranges<Value>>) {
+    fn randomize_weights(
+        &mut self,
+        max_change: &Ranges<Value>,
+        max_weight: &Option<Ranges<Value>>,
+    ) {
         for weight in self.weights.iter_mut() {
             match max_weight {
                 Some(max_weight) => {
@@ -323,7 +370,7 @@ impl Node {
                         value += rng.gen_range(max_change.to_owned());
                         if max_weight.contains(&value) {
                             *weight = value;
-                            break
+                            break;
                         }
                     }
                 }
@@ -348,12 +395,8 @@ enum EndCondition<'a> {
 impl EndCondition<'_> {
     fn check(&self, iter: &usize, nets: &[Net]) -> bool {
         match self {
-            EndCondition::Iteration(threshold) => {
-                return iter > threshold
-            }
-            EndCondition::Method(method) => {
-                return method(nets)
-            }
+            EndCondition::Iteration(threshold) => return iter > threshold,
+            EndCondition::Method(method) => return method(nets),
         }
     }
 }
