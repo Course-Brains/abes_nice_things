@@ -3,7 +3,7 @@ pub mod ai;
 #[cfg(any(debug_assertions, feature = "file_ops"))]
 pub mod file_ops;
 
-pub mod nvec;
+pub mod mutec;
 
 use rand::distributions::uniform::{SampleRange, SampleUniform};
 use serde::{Serialize, Deserialize};
@@ -116,6 +116,135 @@ impl<'a, T> OnceLockMethod<'a, T> {
     }
 }
 
+pub struct OnDrop<'a, T> {
+    method: &'a dyn Fn(&T),
+    input: T
+}
+impl<'a, T> OnDrop<'a, T> {
+    pub fn new(method: &'a dyn Fn(&T), input: T) -> Self {
+        OnDrop {
+            method,
+            input
+        }
+    }
+    pub fn set_input(&mut self, value: T) {
+        self.input = value;
+    }
+}
+impl<'a, T> Drop for OnDrop<'a, T> {
+    fn drop(&mut self) {
+        let input = &self.input;
+        (self.method)(input)
+    }
+}
+/// This will NOT be faster than manually
+/// written out dimensions of [Vecs](Vec).
+/// The only advantage is that the number
+/// of dimensions is defined in a const generic.
+/// 
+/// This uses consistent side lengths. for example
+/// if you have a 3 dimensional [Vec], all the lengths
+/// in the x axis will be the same, which also applies to
+/// the y and z axes, but they do not need to have the same
+/// lengths as each other. So x could be 3 long, while
+/// z could be 5 long.
+pub struct NVec<T, const N: usize> {
+    inner: Vec<T>,
+    lengths: [usize; N],
+}
+impl<T, const N: usize> NVec<T, N> {
+    /// Creates an empty [NVec].
+    /// Eqivalent to [Vec::new].
+    pub const fn new() -> Self {
+        NVec {
+            inner: Vec::new(),
+            lengths: [0; N]
+        }
+    }
+    pub fn get_inner(&self) -> &Vec<T> {
+        &self.inner
+    }
+    pub unsafe fn set_inner(&mut self, inner: Vec<T>, lengths: &[usize; N]) {
+        self.inner = inner;
+        self.lengths = *lengths;
+    }
+    /// Assumes the correct number of indexes are given
+    fn get_index(&self, indexes: &[usize]) -> usize {
+        let mut sum: usize = self.lengths.iter().product();
+        let mut target: usize = 0;
+        for index in 0..N {
+            // Each index needs to be multiplied by
+            // the length of everything it contains
+            sum /= self.lengths[index];
+            target += indexes[index]*sum;
+        }
+        return target
+    }
+    /// Gets a reference to the value at the given position.
+    pub fn get(&self, indexes: &[usize; N]) -> &T {
+        &self.inner[
+            self.get_index(indexes)
+        ]
+    }
+    /// Same as [get](NVec::get) but without checks that
+    /// the correct number of indexes have been given.
+    pub unsafe fn get_slice(&self, indexes: &[usize]) -> &T {
+        &self.inner[
+            self.get_index(indexes)
+        ]
+    }
+    /// Gets a mutable reference to the value at the given position.
+    pub fn get_mut(&mut self, indexes: &[usize; N]) -> &mut T {
+        // index needs to be defined before we start getting the actual value
+        // because otherwise it will be using an immutable reference to
+        // self while getting a mutable reference to something owned by self
+        let index: usize = self.get_index(indexes);
+        return &mut self.inner[index]
+    }
+    /// Same as [get_mut](NVec::get_mut) but without checking that
+    /// the correct number of indexes have been given.
+    pub unsafe fn get_slice_mut(&mut self, indexes: &[usize]) -> &mut T {
+        let index: usize = self.get_index(indexes);
+        return &mut self.inner[index]
+    }
+    pub fn clear(&mut self) {
+        self.inner = Vec::new();
+        self.lengths = [0; N];
+    }
+}
+impl<T, const N: usize> Default for NVec<T, N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+impl<T, const N: usize> std::ops::Index<[usize; N]> for NVec<T, N> {
+    type Output = T;
+    fn index(&self, index: [usize; N]) -> &Self::Output {
+        &self.inner[
+            self.get_index(&index)
+        ]
+    }
+}
+impl<T, const N: usize> std::ops::IndexMut<[usize; N]> for NVec<T, N> {
+    fn index_mut(&mut self, index: [usize; N]) -> &mut Self::Output {
+        let true_index: usize = self.get_index(&index);
+        &mut self.inner[true_index]
+    }
+}
+impl<T, const N: usize> std::ops::Index<&[usize]> for NVec<T, N> {
+    type Output = T;
+    fn index(&self, index: &[usize]) -> &Self::Output {
+        &self.inner[
+            self.get_index(&index)
+        ]
+    }
+}
+impl<T, const N: usize> std::ops::IndexMut<&[usize]> for NVec<T, N> {
+    fn index_mut(&mut self, index: &[usize]) -> &mut Self::Output {
+        let true_index: usize = self.get_index(&index);
+        &mut self.inner[true_index]
+    }
+}
 /// A concrete type for storing the range types while Sized.
 #[derive(PartialEq, Debug, Serialize, Deserialize)]
 pub enum Ranges<T> {
