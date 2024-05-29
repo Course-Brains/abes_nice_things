@@ -388,7 +388,7 @@ pub fn input_yn(msg: &str) -> bool {
         }
     }
 }
-trait FromBinary {
+pub trait FromBinary {
     fn from_binary(binary: &[u8]) -> Self;
 }
 impl<T: From<Vec<u8>>> FromBinary for T {
@@ -396,7 +396,7 @@ impl<T: From<Vec<u8>>> FromBinary for T {
         Self::from(binary.to_vec())
     }
 }
-trait ToBinary {
+pub trait ToBinary {
     fn to_binary(self) -> Vec<u8>;
 }
 impl<T: Into<Vec<u8>>> ToBinary for T {
