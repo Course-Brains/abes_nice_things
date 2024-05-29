@@ -388,3 +388,19 @@ pub fn input_yn(msg: &str) -> bool {
         }
     }
 }
+trait FromBinary {
+    fn from_binary(binary: &[u8]) -> Self;
+}
+impl<T: From<Vec<u8>>> FromBinary for T {
+    fn from_binary(binary: &[u8]) -> Self {
+        Self::from(binary.to_vec())
+    }
+}
+trait ToBinary {
+    fn to_binary(self) -> Vec<u8>;
+}
+impl<T: Into<Vec<u8>>> ToBinary for T {
+    fn to_binary(self) -> Vec<u8> {
+        self.into()
+    }
+}

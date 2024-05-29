@@ -5,13 +5,13 @@ use std::collections::VecDeque;
 /// Lower level version of [Mutex](std::sync::Mutex)
 /// which is just an [AtomicBool] and your value.
 #[derive(Debug)]
-pub struct AtomicLock<T> {
+pub struct Atomex<T> {
     atomic: AtomicBool,
     data: T
 }
-impl<T> AtomicLock<T> {
+impl<T> Atomex<T> {
     pub fn new(data: T) -> Self {
-        AtomicLock {
+        Atomex {
             atomic: AtomicBool::new(false),
             data
         }
@@ -40,7 +40,7 @@ impl<T> AtomicLock<T> {
 }
 #[derive(Debug)]
 pub struct Mutec<T> {
-    inner: Vec<(AtomicLock<UnsafeCell<T>>, AtomicLock<VecDeque<Thread>>)>,
+    inner: Vec<(Atomex<UnsafeCell<T>>, Atomex<VecDeque<Thread>>)>,
 }
 impl<T> Mutec<T> {
     pub const fn new() -> Mutec<T> {
@@ -50,10 +50,10 @@ impl<T> Mutec<T> {
     }
     pub fn push(&mut self, value: T) {
         self.inner.push((
-            AtomicLock::new(
+            Atomex::new(
                 UnsafeCell::new(value)
             ),
-            AtomicLock::new(
+            Atomex::new(
                 VecDeque::new()
             ),
         ))
@@ -129,7 +129,7 @@ impl<T> Mutec<T> {
     /// have it give you the values. In which case, iterating through what this
     /// gives would be usefull:
     /// ```
-    /// # use abes_nice_things::nvec::Mutec;
+    /// # use abes_nice_things::mutec::Mutec;
     /// for mutec_guard in Mutec::from([1,2,3,4]).to_vec().iter() {
     ///     // Whatever it is you want to do with it
     /// }
@@ -140,49 +140,6 @@ impl<T> Mutec<T> {
             vec.push(self.lock(index))
         }
         vec
-    }
-    /// Instead of going through each value by getting
-    /// its lock and only then moving on to the next
-    /// this will attempt to gain the lock, and if it
-    /// can't it will go to the next and come back to it later.
-    /// Due to the implementation this does create a spinlock
-    /// and will be the lowest priority to obtain the lock.
-    /// # More details on limitations:
-    /// The specific way this works is that it will go
-    /// through the entire list and try to obtain their lock
-    /// if it can't it will leave it as [None]. Then it will go through
-    /// the list again and try to obtain the lock to anything that is
-    /// still [None]. Because of this, if it repeatedly can't obtain a
-    /// lock, it will just keep on trying because this uses [Mutec::try_lock]
-    /// instead of [Mutec::lock] which means that the thread will not be
-    /// [parked](std::thread::park) and therefore will not be put on the
-    /// waitlist to be unparked. Meaning that everytime the lock is released
-    /// this has a chance of getting to it before everything else, but it
-    /// might not. Also, if while this is attemoting to get the lock on
-    /// something, another thread requests that lock, it will be a higher
-    /// priority because it is on the waitlist.
-    pub fn to_vec_no_wait(&self) -> Vec<MutecGuard<T>> {
-        let mut vec: Vec<Option<MutecGuard<T>>> = Vec::with_capacity(self.len());
-        for _ in 0..self.len() {
-            vec.push(None);
-        }
-        let mut done: bool = false;
-        while !done {
-            for (index, item) in vec.iter_mut().enumerate() {
-                done = true;
-                if let None = item {
-                    match self.try_lock(index) {
-                        Ok(guard) => {
-                            *item = Some(guard);
-                        }
-                        Err(_) => {
-                            done = false
-                        }
-                    }
-                }
-            }
-        }
-        vec.into_iter().map(|x| x.unwrap()).collect()
     }
     pub fn iter(&self) -> MutecIter<T> {
         MutecIter {
@@ -292,8 +249,28 @@ impl<'a, T> DerefMut for MutecGuard<'a, T> {
 }
 #[cfg(test)]
 mod tests {
-    mod nvec {}
-    mod atomic_lock {}
+    mod atomic_lock {
+        use super::super::*;
+        #[test]
+        fn basic_get_value() {
+            let atomex: Atomex<usize> = Atomex::new(5);
+            assert_eq!(
+                *atomex.try_lock().expect("failed to get available lock"),
+                5,
+                "Value was changed in locking"
+            )
+        }
+        #[test]
+        fn basic_all() {
+            let atomex: Atomex<usize> = Atomex::new(7);
+            assert!(!atomex.check_lock(),"Atomex was locked on creation");
+            atomex.try_lock().expect("failed to acquire lock");
+            assert!(atomex.check_lock(), "Atomex was unlocked after lock was acquired");
+            atomex.try_lock().expect_err("Lock was gained while locked");
+            unsafe { atomex.unlock() }
+            assert!(!atomex.check_lock(), "Atomex was locked after unlocking");
+        }
+    }
     mod mutec {
         use super::super::*;
         #[test]
@@ -383,6 +360,8 @@ mod tests {
                 mutec_iter.next();
                 mutec_iter.next();
                 assert!(mutec_iter.next().is_none(), "mutec iter had an extra value");
+                assert!(mutec_iter.next().is_none(), "mutec iter had an extra value");
+                assert!(mutec_iter.next().is_none(), "mutec iter had an extra value");
             }
             #[test]
             fn next_back_over() {
@@ -392,24 +371,6 @@ mod tests {
                 mutec_iter.next_back();
                 mutec_iter.next_back();
                 assert!(mutec_iter.next_back().is_none(), "mutec iter had an extra value");
-            }
-            #[test]
-            fn next_over_more() {
-                let mutec: Mutec<&str> = Mutec::from(["5","6","7"]);
-                let mut mutec_iter = mutec.iter();
-                mutec_iter.next();
-                mutec_iter.next();
-                mutec_iter.next();
-                assert!(mutec_iter.next().is_none(), "mutec iter had an extra value");
-                assert!(mutec_iter.next().is_none(), "mutec iter had an extra value");
-            }
-            #[test]
-            fn next_back_over_more() {
-                let mutec: Mutec<&str> = Mutec::from(["5","6","7"]);
-                let mut mutec_iter = mutec.iter();
-                mutec_iter.next_back();
-                mutec_iter.next_back();
-                mutec_iter.next_back();
                 assert!(mutec_iter.next_back().is_none(), "mutec iter had an extra value");
                 assert!(mutec_iter.next_back().is_none(), "mutec iter had an extra value");
             }
