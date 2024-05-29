@@ -389,9 +389,11 @@ pub fn input_yn(msg: &str) -> bool {
     }
 }
 pub trait FromBinary {
+    const LEN: Option<usize>;
     fn from_binary(binary: &[u8]) -> Self;
 }
 impl<T: From<Vec<u8>>> FromBinary for T {
+    const LEN: Option<usize> = None;
     fn from_binary(binary: &[u8]) -> Self {
         Self::from(binary.to_vec())
     }
