@@ -286,7 +286,7 @@ impl<'a, const N: usize> ArgChecks<'a, N> {
     }
 }
 pub struct ArgCheck<'a> {
-    pub trigger: String,
+    pub trigger: &'a str,
     pub args: Option<usize>,
     pub run: &'a dyn Fn(Vec<String>),
 }
