@@ -2,8 +2,6 @@
 pub mod ai;
 #[cfg(any(debug_assertions, feature = "file_ops"))]
 pub mod file_ops;
-//#[cfg(any(debug_assertions, feature = "idb"))]
-//pub mod idb;
 
 pub mod mutec;
 
@@ -288,9 +286,9 @@ impl<'a, const N: usize> ArgChecks<'a, N> {
     }
 }
 pub struct ArgCheck<'a> {
-    trigger: String,
-    args: Option<usize>,
-    run: &'a dyn Fn(Vec<String>),
+    pub trigger: String,
+    pub args: Option<usize>,
+    pub run: &'a dyn Fn(Vec<String>),
 }
 /// A concrete type for storing the range types while Sized.
 #[derive(PartialEq, Debug, Serialize, Deserialize)]
