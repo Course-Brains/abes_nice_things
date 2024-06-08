@@ -2,6 +2,8 @@
 pub mod ai;
 #[cfg(any(debug_assertions, feature = "file_ops"))]
 pub mod file_ops;
+//#[cfg(any(debug_assertions, feature = "idb"))]
+//pub mod idb;
 
 pub mod mutec;
 
@@ -74,7 +76,7 @@ macro_rules! debug {
             $debug;
         }
     };
-}
+} 
 
 pub struct OnceLockMethod<'a, T> {
     inner: Mutex<Option<T>>,
@@ -245,9 +247,54 @@ impl<T, const N: usize> std::ops::IndexMut<&[usize]> for NVec<T, N> {
         &mut self.inner[true_index]
     }
 }
+pub struct ArgChecks<'a, const N: usize> {
+    checks: [ArgCheck<'a> ; N]
+}
+impl<'a, const N: usize> ArgChecks<'a, N> {
+    pub const fn new(checks: [ArgCheck<'a>; N]) -> Self {
+        ArgChecks {
+            checks
+        }
+    }
+    pub fn check(&self) {
+        self.check_with(&mut std::env::args())
+    }
+    pub fn check_with(&self, args: &mut std::env::Args) {
+        while let Some(arg) = args.next() {
+            if let Some(check) = self.contains(arg) {
+                match check.args {
+                    Some(num_args) => {
+                        let mut sub_args = Vec::with_capacity(num_args);
+                        for _ in 0..num_args {
+                            // 7 layers of indentation pain
+                            sub_args.push(args.next().unwrap())
+                        }
+                        (check.run)(sub_args)
+                    }
+                    None => {
+                        (check.run)(Vec::new())
+                    }
+                }
+            }
+        }
+    }
+    fn contains(&self, other: String) -> Option<&ArgCheck> {
+        for check in self.checks.iter() {
+            if check.trigger == other {
+                return Some(check)
+            }
+        }
+        None
+    }
+}
+pub struct ArgCheck<'a> {
+    trigger: String,
+    args: Option<usize>,
+    run: &'a dyn Fn(Vec<String>),
+}
 /// A concrete type for storing the range types while Sized.
 #[derive(PartialEq, Debug, Serialize, Deserialize)]
-pub enum Ranges<T> {
+pub enum Ranges<T> { 
     Range(Range<T>),
     Inclusive(RangeInclusive<T>),
 }
@@ -389,15 +436,21 @@ pub fn input_yn(msg: &str) -> bool {
     }
 }
 pub trait FromBinary {
-    const LEN: Option<usize>;
     fn from_binary(binary: &[u8]) -> Self;
 }
 impl<T: From<Vec<u8>>> FromBinary for T {
-    const LEN: Option<usize> = None;
     fn from_binary(binary: &[u8]) -> Self {
         Self::from(binary.to_vec())
     }
 }
+/*pub trait FromBinarySized where Self: FromBinary {
+    const LEN: usize;
+    fn read_next(mut source: impl std::io::Read) -> Self where Self: Sized {
+        let mut buf = [0u8; Self::LEN];
+        source.read_exact(&mut buf);
+        Self::from_binary(&buf)
+    }
+}*/
 pub trait ToBinary {
     fn to_binary(self) -> Vec<u8>;
 }

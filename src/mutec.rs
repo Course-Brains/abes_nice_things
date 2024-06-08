@@ -121,8 +121,8 @@ impl<T> Mutec<T> {
         }
     }
     /// This creates a [Vec] of the [MutecGuards](MutecGuard)
-    /// which is situationally more useful than just [iterating](MutecIter)
-    /// throught it. If you just [iterate](MutecIter) through it, it will
+    /// which is situationally more useful than just [iterating](Iter)
+    /// throught it. If you just [iterate](Iter) through it, it will
     /// obtain the [lock](Mutec::lock) of a value, give it to you, then when you call
     /// [next](Iterator::next) again, it will get the [lock](Mutec::lock) of the next one.
     /// However, you might need it to obtain all the [locks](Mutec::lock), then
@@ -141,8 +141,8 @@ impl<T> Mutec<T> {
         }
         vec
     }
-    pub fn iter(&self) -> MutecIter<T> {
-        MutecIter {
+    pub fn iter(&self) -> Iter<T> {
+        Iter {
             parent: self,
             index: 0,
             back_index: self.inner.len()
@@ -192,12 +192,12 @@ impl<T> Extend<T> for Mutec<T> {
 }
 unsafe impl<T> Sync for Mutec<T> {}
 unsafe impl<T> Send for Mutec<T> {}
-pub struct MutecIter<'a, T> {
+pub struct Iter<'a, T> {
     parent: &'a Mutec<T>,
     index: usize,
     back_index: usize,
 }
-impl<'a, T> Iterator for MutecIter<'a, T> {
+impl<'a, T> Iterator for Iter<'a, T> {
     type Item = MutecGuard<'a, T>;
     fn next(&mut self) -> Option<Self::Item> {
         if self.index >= self.back_index {
@@ -210,7 +210,7 @@ impl<'a, T> Iterator for MutecIter<'a, T> {
         (self.len(), Some(self.len()))
     }
 }
-impl<'a, T> DoubleEndedIterator for MutecIter<'a, T> {
+impl<'a, T> DoubleEndedIterator for Iter<'a, T> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.back_index <= self.index {
             return None
@@ -219,12 +219,12 @@ impl<'a, T> DoubleEndedIterator for MutecIter<'a, T> {
         Some(self.parent.lock(self.back_index))
     }
 }
-impl<'a, T> ExactSizeIterator for MutecIter<'a, T> {
+impl<'a, T> ExactSizeIterator for Iter<'a, T> {
     fn len(&self) -> usize {
         self.back_index - self.index
     }
 }
-impl<'a, T> std::iter::FusedIterator for MutecIter<'a, T> {}
+impl<'a, T> std::iter::FusedIterator for Iter<'a, T> {}
 pub struct MutecGuard<'a, T> {
     inner: &'a mut T,
     parent: &'a Mutec<T>,
