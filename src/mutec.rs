@@ -42,36 +42,8 @@ impl<T> Atomex<T> {
 pub struct Mutec<T> {
     inner: Vec<(Atomex<UnsafeCell<T>>, Atomex<VecDeque<Thread>>)>,
 }
+// Block for methods relating to the lock/unlock itself
 impl<T> Mutec<T> {
-    pub const fn new() -> Mutec<T> {
-        Mutec {
-            inner: Vec::new()
-        }
-    }
-    pub fn push(&mut self, value: T) {
-        self.inner.push((
-            Atomex::new(
-                UnsafeCell::new(value)
-            ),
-            Atomex::new(
-                VecDeque::new()
-            ),
-        ))
-    }
-    pub fn len(&self) -> usize {
-        self.inner.len()
-    }
-    pub fn try_reserve_exact(&mut self, additional: usize) -> Result<(), std::collections::TryReserveError> {
-        self.inner.try_reserve_exact(additional)
-    }
-    pub fn extend_from_slice(&mut self, slice: &[T]) where T: Clone {
-        if let Err(error) = self.try_reserve_exact(slice.len()) {
-            panic!("Error reserving required space: {error}");
-        }
-        for item in slice.into_iter() {
-            self.push(item.clone());
-        }
-    }
     pub fn check_lock(&self, index: usize) -> bool {
         self.inner[index].0.check_lock()
     }
@@ -120,6 +92,38 @@ impl<T> Mutec<T> {
             }
         }
     }
+}
+// Block for methods relating to it as a Vec wrapper
+impl<T> Mutec<T> {
+    pub const fn new() -> Mutec<T> {
+        Mutec {
+            inner: Vec::new()
+        }
+    }
+    pub fn push(&mut self, value: T) {
+        self.inner.push((
+            Atomex::new(
+                UnsafeCell::new(value)
+            ),
+            Atomex::new(
+                VecDeque::new()
+            ),
+        ))
+    }
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+    pub fn try_reserve_exact(&mut self, additional: usize) -> Result<(), std::collections::TryReserveError> {
+        self.inner.try_reserve_exact(additional)
+    }
+    pub fn extend_from_slice(&mut self, slice: &[T]) where T: Clone {
+        if let Err(error) = self.try_reserve_exact(slice.len()) {
+            panic!("Error reserving required space: {error}");
+        }
+        for item in slice.into_iter() {
+            self.push(item.clone());
+        }
+    }
     /// This creates a [Vec] of the [MutecGuards](MutecGuard)
     /// which is situationally more useful than just [iterating](Iter)
     /// throught it. If you just [iterate](Iter) through it, it will
@@ -148,7 +152,18 @@ impl<T> Mutec<T> {
             back_index: self.inner.len()
         }
     }
+    pub fn async_iter(&self) -> AsyncIter<T> {
+        let mut progress: Vec<bool> = Vec::with_capacity(self.len());
+        for _ in 0..self.len() {
+            progress.push(false);
+        }
+        AsyncIter {
+            parent: self,
+            progress
+        }
+    }
 }
+// General trait implementations
 impl<T: Clone> From<&[T]> for Mutec<T> {
     fn from(slice: &[T]) -> Self {
         let mut mutec: Mutec<T> = Mutec::new();
@@ -192,6 +207,7 @@ impl<T> Extend<T> for Mutec<T> {
 }
 unsafe impl<T> Sync for Mutec<T> {}
 unsafe impl<T> Send for Mutec<T> {}
+/// [Iter](Iterator) struct for [Mutec]
 pub struct Iter<'a, T> {
     parent: &'a Mutec<T>,
     index: usize,
@@ -225,6 +241,32 @@ impl<'a, T> ExactSizeIterator for Iter<'a, T> {
     }
 }
 impl<'a, T> std::iter::FusedIterator for Iter<'a, T> {}
+pub struct AsyncIter<'a, T> {
+    parent: &'a Mutec<T>,
+    progress: Vec<bool>,
+}
+impl<'a, T> Iterator for AsyncIter<'a, T> {
+    type Item = MutecGuard<'a, T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut done: bool = false;
+        while !done {
+            done = true;
+            for (index, progress) in self.progress.iter_mut().enumerate() {
+                if *progress {
+                    continue;
+                }
+                done = false;
+                if let Ok(guard) = self.parent.try_lock(index) {
+                    *progress = true;
+                    return Some(guard)
+                }
+            }
+        }
+        return None
+    }
+}
+#[derive(Debug)]
 pub struct MutecGuard<'a, T> {
     inner: &'a mut T,
     parent: &'a Mutec<T>,
@@ -246,6 +288,16 @@ impl<'a, T> DerefMut for MutecGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.inner
     }
+}
+impl<'a, T: PartialEq> PartialEq for MutecGuard<'a, T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.deref() == other.deref()
+    }
+}
+impl<'a, T: PartialEq> PartialEq<T> for MutecGuard<'a, T> {
+   fn eq(&self, other: &T) -> bool {
+       self.deref().eq(other)
+   }
 }
 #[cfg(test)]
 mod tests {
@@ -324,7 +376,7 @@ mod tests {
             });
             assert_eq!(*mutec.lock(0), "today", "BLYAT");
         }
-        mod mutec_iter {
+        mod iter {
             use super::super::super::*;
             #[test]
             fn next_basic() {
@@ -374,6 +426,71 @@ mod tests {
                 assert!(mutec_iter.next_back().is_none(), "mutec iter had an extra value");
                 assert!(mutec_iter.next_back().is_none(), "mutec iter had an extra value");
             }
+        }
+        mod async_iter {
+            use super::super::super::{Mutec, super::Transceiver};
+            use std::ops::Deref;
+            #[test]
+            fn next_basic() {
+                let source: &[usize] = &[5, 2, 7, 42, 79];
+                let mutec: Mutec<usize> = Mutec::from(source);
+                let mut check: Vec<usize> = Vec::with_capacity(source.len());
+                for item in mutec.async_iter() {
+                    check.push(*item);
+                }
+                assert_eq!(source, check);
+            }
+            #[test]
+            fn next_over() {
+                let source: &[usize] = &[5, 9, 23];
+                let mutec: Mutec<usize> = Mutec::from(source);
+                let mut iter = mutec.async_iter();
+                iter.next();
+                iter.next();
+                iter.next();
+                assert_eq!(iter.next(), None);
+                assert_eq!(iter.next(), None);
+            }
+            /*#[test]
+            fn order() {
+                // 1: 1(hold)
+
+                // 2: 2(hold)
+                // swap
+                // 1: 3,4
+                // 1: drop 1
+
+                // 2: 3,4,1
+                // 2: drop 2
+                // 2 done
+
+                // 1: 2
+                // 1 done
+                let source: &[usize] = &[8, 2, 6, 1];
+                let mutec: Mutec<usize> = Mutec::from(source);
+                let mut iter1 = mutec.async_iter();
+                let mut iter2 = mutec.async_iter();
+                
+                // 1: 1(hold)
+                let val1 = iter1.next().unwrap();
+                assert_eq!(*val1, source[0]);
+                // 2: 2(hold)
+                let val2 = iter2.next().unwrap();
+                assert_eq!(*val2, source[1]);
+                // 1: 3,4 & drop 1
+                assert_eq!(*iter1.next().unwrap(), source[2]);
+                assert_eq!(*iter1.next().unwrap(), source[3]);
+                // drop(val1);
+                // 2: 3,4,1 & drop 2
+                assert_eq!(*iter2.next().unwrap(), source[2]);
+                assert_eq!(*iter2.next().unwrap(), source[3]);
+                assert_eq!(*iter2.next().unwrap(), source[0]);
+                drop(val2);
+                // 2: done
+                // 1: 2
+                assert_eq!(*iter1.next().unwrap(), source[1]);
+                // 1: done
+            }*/
         }
     }
 }

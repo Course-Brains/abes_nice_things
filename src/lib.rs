@@ -1,9 +1,6 @@
-#[cfg(any(debug_assertions, feature = "ai"))]
-pub mod ai;
-#[cfg(any(debug_assertions, feature = "file_ops"))]
-pub mod file_ops;
-
 pub mod mutec;
+pub mod as_from;
+pub use as_from::{AsFrom, AsInto, AsTryFrom, AsTryInto};
 
 use rand::distributions::uniform::{SampleRange, SampleUniform};
 use serde::{Serialize, Deserialize};
@@ -12,6 +9,7 @@ use std::{
     io::stdin,
     ops::{Range, RangeBounds, RangeInclusive},
     sync::{Mutex, MutexGuard},
+    fmt::Debug
 };
 
 pub mod prelude {
@@ -21,6 +19,10 @@ pub mod prelude {
         debug,
         debug_println,
         input,
+        AsFrom,
+        AsInto,
+        AsTryFrom,
+        AsTryInto
     };
 }
 
@@ -161,7 +163,7 @@ impl<T, const N: usize> NVec<T, N> {
             lengths: [0; N]
         }
     }
-    pub fn get_inner(&self) -> &Vec<T> {
+    pub fn to_vec(&self) -> &Vec<T> {
         &self.inner
     }
     pub unsafe fn set_inner(&mut self, inner: Vec<T>, lengths: &[usize; N]) {
@@ -170,6 +172,9 @@ impl<T, const N: usize> NVec<T, N> {
     }
     /// Assumes the correct number of indexes are given
     fn get_index(&self, indexes: &[usize]) -> usize {
+        assert_eq!(
+            indexes.len(), self.lengths.len(),
+            "Incorrect number of indexes given:\nexpected: {}, got:{}", self.lengths.len(), indexes.len());
         let mut sum: usize = self.lengths.iter().product();
         let mut target: usize = 0;
         for index in 0..N {
@@ -245,6 +250,14 @@ impl<T, const N: usize> std::ops::IndexMut<&[usize]> for NVec<T, N> {
         &mut self.inner[true_index]
     }
 }
+impl<T: rand::Fill, const N: usize> rand::Fill for NVec<T, N> {
+    fn try_fill<R: rand::Rng + ?Sized>(&mut self, rng: &mut R) -> Result<(), rand::Error> {
+        for item in self.inner.iter_mut() {
+            rng.try_fill(item)?
+        }
+        Ok(())
+    }
+}
 pub struct ArgChecks<'a, const N: usize> {
     checks: [ArgCheck<'a> ; N]
 }
@@ -290,7 +303,87 @@ pub struct ArgCheck<'a> {
     pub args: Option<usize>,
     pub run: &'a dyn Fn(Vec<String>),
 }
+/// An async adjacent way to generate things using threads.
+pub struct ThreadInit<T: std::marker::Send + Debug + 'static> {
+    data: std::sync::OnceLock<T>,
+    handle: Option<std::thread::JoinHandle<T>>
+}
+impl<T: std::marker::Send + Debug + 'static> ThreadInit<T> {
+    /// Creates the instance and starts the thread's operations.
+    pub fn new<C: Fn() -> T + Sync + std::marker::Send + 'static>(creator: C) -> Self {
+        ThreadInit {
+            data: std::sync::OnceLock::new(),
+            handle: Some(std::thread::spawn(creator))
+        }
+    }
+    /// Joins with thethread and gets the data returned.
+    /// If it already happened then it will just give a stored value.
+    /// Any error returned is from the threads joining.
+    pub fn get(&mut self) -> Result<&T, Box<dyn std::any::Any + std::marker::Send>> {
+        // If we already have the value, then we cam just return it
+        if let Some(data) = self.data.get() {
+            return Ok(data)
+        }
+        // When data gets initialized, the handle gets consumed,
+        // and at this point, that hasn't happened.
+        // Meaning that there is no situation where at this point,
+        // data has already been set, or the handle has been consumed
+        self.data.set(
+            self.handle.take().expect("Something has gone very very wrong")
+            .join()?
+        ).expect("Something has gone very very wrong");
+        // If we can't get the value we literally just set then I don't even know anymore
+        return Ok(self.data.get().expect("Something has gone very very wrong"));
+    }
+}
+use std::sync::mpsc::{Sender, Receiver, channel, SendError, RecvError};
+pub struct Transceiver<T> {
+    tx: Sender<T>,
+    rx: Receiver<T>,
+}
+impl<T> Transceiver<T> {
+    pub fn new() -> (Self, Self) {
+        let (tx1, rx2) = channel::<T>();
+        let (tx2, rx1) = channel::<T>();
+        return (
+            Transceiver {
+                tx: tx1,
+                rx: rx1
+            },
+            Transceiver {
+                tx: tx2,
+                rx: rx2
+            }
+        )
+    }
+    pub fn send(&self, data: T) -> Result<(), SendError<T>> {
+        self.tx.send(data)
+    }
+    pub fn recv(&self) -> Result<T, RecvError> {
+        self.rx.recv()
+    }
+    pub fn call(&self, data: T) -> Result<T, TransError<T>> {
+        self.tx.send(data)?;
+        Ok(self.rx.recv()?)
+    }
+}
+#[derive(Debug)]
+pub enum TransError<T> {
+    Send(SendError<T>),
+    Recv(RecvError)
+}
+impl<T> From<SendError<T>> for TransError<T> {
+    fn from(value: SendError<T>) -> Self {
+        TransError::Send(value)
+    }
+}
+impl<T> From<RecvError> for TransError<T> {
+    fn from(value: RecvError) -> Self {
+        TransError::Recv(value)
+    }
+}
 /// A concrete type for storing the range types while Sized.
+/// Currently only has [Range] and [RangeInclusive]
 #[derive(PartialEq, Debug, Serialize, Deserialize)]
 pub enum Ranges<T> { 
     Range(Range<T>),
@@ -366,6 +459,18 @@ impl<T> RangeBounds<T> for Ranges<T> {
         }
     }
 }
+pub enum Either<T, U> {
+    T(T),
+    U(U)
+}
+impl<T, U> Either<T, U> {
+    pub fn new_t(t: T) -> Self {
+        Either::T(t)
+    }
+    pub fn new_u(u: U) -> Self {
+        Either::U(u)
+    }
+}
 
 pub fn gen_check<T>(gen: impl Fn() -> T, check: impl Fn(&T) -> bool) -> T {
     loop {
@@ -436,24 +541,47 @@ pub fn input_yn(msg: &str) -> bool {
 pub trait FromBinary {
     fn from_binary(binary: &[u8]) -> Self;
 }
-impl<T: From<Vec<u8>>> FromBinary for T {
-    fn from_binary(binary: &[u8]) -> Self {
-        Self::from(binary.to_vec())
-    }
-}
-/*pub trait FromBinarySized where Self: FromBinary {
+pub trait FromBinarySized where Self: FromBinary {
     const LEN: usize;
-    fn read_next(mut source: impl std::io::Read) -> Self where Self: Sized {
+    /*fn read_next(mut source: impl Read) -> Self where Self: Sized {
         let mut buf = [0u8; Self::LEN];
         source.read_exact(&mut buf);
         Self::from_binary(&buf)
+    }*/
+}
+impl FromBinary for u8 {
+    fn from_binary(binary: &[u8]) -> Self {
+        binary[0]
     }
-}*/
+}
+impl FromBinarySized for u8 {
+    const LEN: usize = 1;
+}
+impl FromBinary for u16 {
+    fn from_binary(binary: &[u8]) -> Self {
+        u16::from_le_bytes([binary[0], binary[1]])
+    }
+}
 pub trait ToBinary {
     fn to_binary(self) -> Vec<u8>;
 }
 impl<T: Into<Vec<u8>>> ToBinary for T {
     fn to_binary(self) -> Vec<u8> {
         self.into()
+    }
+}
+#[cfg(test)]
+mod tests {
+    mod thread_init {
+        use super::super::ThreadInit;
+        #[test]
+        fn new() {
+            let a = ThreadInit::new(|| {5});
+        }
+        #[test]
+        fn normal() {
+            let mut init = ThreadInit::new(|| {"uisx".to_string()});
+            assert_eq!(init.get().unwrap(), "uisx");
+        }
     }
 }
