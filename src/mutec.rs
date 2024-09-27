@@ -428,8 +428,7 @@ mod tests {
             }
         }
         mod async_iter {
-            use super::super::super::{Mutec, super::Transceiver};
-            use std::ops::Deref;
+            use super::super::super::Mutec;
             #[test]
             fn next_basic() {
                 let source: &[usize] = &[5, 2, 7, 42, 79];

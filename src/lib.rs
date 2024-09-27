@@ -306,14 +306,16 @@ pub struct ArgCheck<'a> {
 /// An async adjacent way to generate things using threads.
 pub struct ThreadInit<T: std::marker::Send + Debug + 'static> {
     data: std::sync::OnceLock<T>,
-    handle: Option<std::thread::JoinHandle<T>>
+    handle: Option<std::thread::JoinHandle<T>>,
+    method: Box<dyn Fn() -> T + std::marker::Send>
 }
 impl<T: std::marker::Send + Debug + 'static> ThreadInit<T> {
     /// Creates the instance and starts the thread's operations.
-    pub fn new<C: Fn() -> T + Sync + std::marker::Send + 'static>(creator: C) -> Self {
+    pub fn new<C: Fn() -> T + std::marker::Send + Clone + 'static>(creator:&'static C) -> Self {
         ThreadInit {
             data: std::sync::OnceLock::new(),
-            handle: Some(std::thread::spawn(creator))
+            handle: Some(std::thread::spawn(creator.clone())),
+            method: Box::new(creator.clone())
         }
     }
     /// Joins with thethread and gets the data returned.
@@ -334,6 +336,14 @@ impl<T: std::marker::Send + Debug + 'static> ThreadInit<T> {
         ).expect("Something has gone very very wrong");
         // If we can't get the value we literally just set then I don't even know anymore
         return Ok(self.data.get().expect("Something has gone very very wrong"));
+    }
+    /// Removes the data from the thread(if there was any),
+    /// sets the thread to regenerate the data,
+    /// and returns the data that there, if there was any.
+    pub fn reset(&mut self) -> Option<T> where  dyn Fn() -> T + std::marker::Send: Clone{
+        let out = self.data.take();
+        self.handle = Some(std::thread::spawn((*self.method).clone()));
+        return out
     }
 }
 use std::sync::mpsc::{Sender, Receiver, channel, SendError, RecvError};
@@ -576,11 +586,11 @@ mod tests {
         use super::super::ThreadInit;
         #[test]
         fn new() {
-            let a = ThreadInit::new(|| {5});
+            let _a = ThreadInit::new(&|| {5});
         }
         #[test]
         fn normal() {
-            let mut init = ThreadInit::new(|| {"uisx".to_string()});
+            let mut init = ThreadInit::new(&|| {"uisx".to_string()});
             assert_eq!(init.get().unwrap(), "uisx");
         }
     }
