@@ -78,41 +78,61 @@ macro_rules! debug {
     };
 } 
 
+/// A version of [OnceLock](std::sync::OnceLock)
+/// which has the method used be determined at creation and consistent.
+/// Main benefit is that you won't have to type out the method multiple
+/// times and risk mistakes.
 pub struct OnceLockMethod<'a, T> {
     inner: Mutex<Option<T>>,
     method: &'a (dyn Fn() -> T + Sync),
 }
 impl<'a, T> OnceLockMethod<'a, T> {
+    /// Creates the instance, but does NOT
+    /// initialize the data.
     pub const fn new(method: &'a (impl Fn() -> T + Sync)) -> OnceLockMethod<'a, T> {
         return OnceLockMethod {
             inner: Mutex::new(None),
             method,
         };
     }
+    /// Runs the method to set the data
+    /// even if it already has been set.
+    /// Also, this is blocking.
     pub fn init(&self) {
         *self.inner.lock().unwrap() = Some((self.method)());
     }
+    /// Gets the data,
+    /// or if there is no data yet,
+    /// returns None.
     pub fn get(&self) -> MutexGuard<'_, Option<T>> {
         return self.inner.lock().unwrap();
     }
+    /// If it has not already been initalized,
+    /// it creates the data.
+    /// Then it gets the data.
+    /// This is also blocking.
     pub fn get_or_init(&self) -> MutexGuard<'_, Option<T>> {
         if self.is_uninit() {
             self.init();
         }
         return self.get();
     }
+    /// returns whether or not this has been initialized.
     pub fn is_init(&self) -> bool {
         if self.inner.lock().unwrap().is_some() {
             return true;
         }
         return false;
     }
+    /// returns if this has NOT been initialized.
     pub fn is_uninit(&self) -> bool {
         if self.inner.lock().unwrap().is_none() {
             return true;
         }
         return false;
     }
+    /// Sets the data to something no matter what
+    /// its state was before.
     pub unsafe fn set(&self, value: T) {
         *self.inner.lock().unwrap() = Some(value)
     }
