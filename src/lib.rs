@@ -338,7 +338,7 @@ impl<T: std::marker::Send + Debug + 'static> ThreadInit<T> {
             method: Box::new(creator.clone())
         }
     }
-    /// Joins with thethread and gets the data returned.
+    /// Joins with the thread and gets the data returned.
     /// If it already happened then it will just give a stored value.
     /// Any error returned is from the threads joining.
     pub fn get(&mut self) -> Result<&T, Box<dyn std::any::Any + std::marker::Send>> {
@@ -364,6 +364,17 @@ impl<T: std::marker::Send + Debug + 'static> ThreadInit<T> {
         let out = self.data.take();
         self.handle = Some(std::thread::spawn((*self.method).clone()));
         return out
+    }
+    /// Consumes the instance and if the data has already been
+    /// generated, it returns that. But if it hasn't been
+    /// then it finishes generation then does it.
+    /// As such, until it finishes generation,
+    /// it blocks the current thread.
+    pub fn unwrap(mut self) -> T {
+        if let Some(data) = self.data.take() {
+            return data
+        }
+        return self.handle.unwrap().join().unwrap()
     }
 }
 use std::sync::mpsc::{Sender, Receiver, channel, SendError, RecvError};
@@ -612,6 +623,17 @@ mod tests {
         fn normal() {
             let mut init = ThreadInit::new(&|| {"uisx".to_string()});
             assert_eq!(init.get().unwrap(), "uisx");
+        }
+        #[test]
+        fn unwrap_gen() {
+            let init = ThreadInit::new(&|| {"shrug"});
+            assert_eq!(init.unwrap(), "shrug");
+        }
+        #[test]
+        fn unwrap_pre_gen() {
+            let mut init = ThreadInit::new(&|| {15});
+            assert_eq!(*init.get().unwrap(), 15);
+            assert_eq!(init.unwrap(), 15);
         }
     }
 }
