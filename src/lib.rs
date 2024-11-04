@@ -5,12 +5,13 @@ pub use as_from::{AsFrom, AsInto, AsTryFrom, AsTryInto};
 use rand::distributions::uniform::{SampleRange, SampleUniform};
 use serde::{Serialize, Deserialize};
 use std::{
-    hash::{Hash, Hasher},
     io::stdin,
     ops::{Range, RangeBounds, RangeInclusive},
     sync::{Mutex, MutexGuard},
     fmt::Debug
 };
+
+pub use abes_nice_procs::method;
 
 pub mod prelude {
     pub use crate::{
@@ -22,7 +23,8 @@ pub mod prelude {
         AsFrom,
         AsInto,
         AsTryFrom,
-        AsTryInto
+        AsTryInto,
+        method,
     };
 }
 
@@ -137,10 +139,9 @@ impl<'a, T> OnceLockMethod<'a, T> {
         *self.inner.lock().unwrap() = Some(value)
     }
 }
-
 pub struct OnDrop<'a, T> {
     method: &'a dyn Fn(&T),
-    input: T
+    input: T,
 }
 impl<'a, T> OnDrop<'a, T> {
     pub fn new(method: &'a dyn Fn(&T), input: T) -> Self {
@@ -157,6 +158,44 @@ impl<'a, T> Drop for OnDrop<'a, T> {
     fn drop(&mut self) {
         let input = &self.input;
         (self.method)(input)
+    }
+}
+/// A type to run code when the thread panics.
+/// In order to actually run the code,
+/// the instance of this must exist when the thread panics.
+/// aka. it needs to not have been dropped.
+/// To make that easier, I suggest you put it in
+/// the main section of your thread, or put it in main.
+/// However, you can also put it in a function to handle panics
+/// specifically inside that function.
+/// Or you can drop it to remove it when you no longer need it.
+pub struct OnPanic<'a, T> {
+    method: &'a dyn Fn(&T),
+    input: T,
+}
+impl<'a, T> OnPanic<'a, T> {
+    pub fn new(method: &'a dyn Fn(&T), input: T) -> Self {
+        OnPanic {
+            method,
+            input
+        }
+    }
+    /// Sets the input to the method and returns the previous value
+    pub fn set_input(&mut self, input: T) -> T {
+        std::mem::replace(&mut self.input, input)
+    }
+    pub fn get_input(&self) -> &T {
+        &self.input
+    }
+    pub fn set_method(&mut self, method: &'a dyn Fn(&T)) {
+        self.method = method;
+    }
+}
+impl<'a, T> Drop for OnPanic<'a, T> {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            (self.method)(&self.input)
+        }
     }
 }
 /// This will NOT be faster than manually
@@ -457,11 +496,6 @@ impl<T: Clone> Clone for Ranges<T> {
         }
     }
 }
-impl<T: Hash> Hash for Ranges<T> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        core::mem::discriminant(self).hash(state);
-    }
-}
 impl<T: SampleUniform + PartialOrd> SampleRange<T> for Ranges<T> {
     fn sample_single<R: rand::prelude::RngCore + ?Sized>(self, rng: &mut R) -> T {
         match self {
@@ -584,11 +618,11 @@ pub trait FromBinary {
 }
 pub trait FromBinarySized where Self: FromBinary {
     const LEN: usize;
-    /*fn read_next(mut source: impl Read) -> Self where Self: Sized {
-        let mut buf = [0u8; Self::LEN];
-        source.read_exact(&mut buf);
-        Self::from_binary(&buf)
-    }*/
+    // fn read_next(mut source: impl std::io::Read) -> Self where Self: Sized {
+    //     let mut buf = [0u8; Self::LEN];
+    //     source.read_exact(&mut buf);
+    //     Self::from_binary(&buf)
+    // }
 }
 impl FromBinary for u8 {
     fn from_binary(binary: &[u8]) -> Self {
@@ -603,12 +637,20 @@ impl FromBinary for u16 {
         u16::from_le_bytes([binary[0], binary[1]])
     }
 }
+impl FromBinarySized for u16 {
+    const LEN: usize = 2;
+}
 pub trait ToBinary {
     fn to_binary(self) -> Vec<u8>;
 }
-impl<T: Into<Vec<u8>>> ToBinary for T {
+impl ToBinary for u8 {
     fn to_binary(self) -> Vec<u8> {
-        self.into()
+        Vec::from(self.to_le_bytes())
+    }
+}
+impl ToBinary for u16 {
+    fn to_binary(self) -> Vec<u8> {
+        Vec::from(self.to_le_bytes())
     }
 }
 #[cfg(test)]
