@@ -13,7 +13,7 @@ use std::{
     fmt::Debug
 };
 
-pub use abes_nice_procs::method;
+pub use abes_nice_procs::{FromBinary, ToBinary, method};
 
 pub mod prelude {
     pub use crate::{

@@ -5,7 +5,7 @@ version = 3
 [[package]]
 name = "abes_nice_procs"
 version = "0.1.0"
-source = "git+https://github.com/Course-Brains/abes_nice_procs.git?rev=5af26f6#5af26f614273e707d64a5fc4bd0507fffee1852b"
+source = "git+https://github.com/Course-Brains/abes_nice_procs.git?rev=445599f#445599fbeca8fc8117d785736ac88cabea23e3f3"
 dependencies = [
  "serde",
  "toml 0.8.19",

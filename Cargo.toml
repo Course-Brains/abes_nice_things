@@ -11,7 +11,7 @@ toml = "0.5"
 dirs = "3.0"
 sequential-test = "0.2.4"
 rand = "0.8"
-abes_nice_procs = { git = "https://github.com/Course-Brains/abes_nice_procs.git", rev = "5af26f6" }
+abes_nice_procs = { git = "https://github.com/Course-Brains/abes_nice_procs.git", rev = "445599f" }
 
 [features]
 default = []
