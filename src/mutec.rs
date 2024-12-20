@@ -7,13 +7,13 @@ use std::collections::VecDeque;
 #[derive(Debug)]
 pub struct Atomex<T> {
     atomic: AtomicBool,
-    data: T
+    data: UnsafeCell<T>
 }
 impl<T> Atomex<T> {
     pub fn new(data: T) -> Self {
         Atomex {
             atomic: AtomicBool::new(false),
-            data
+            data: UnsafeCell::new(data),
         }
     }
     pub fn try_lock(&self) -> Result<&mut T, ()> {
@@ -24,7 +24,7 @@ impl<T> Atomex<T> {
             Ordering::SeqCst
         ) {
             Ok(_) => {
-                unsafe { Ok(&mut *(&self.data as *const T as *mut T) ) }
+                unsafe { Ok(self.data.get().as_mut().unwrap()) }
             }
             Err(_) => {
                 return Err(())

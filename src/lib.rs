@@ -1,6 +1,8 @@
 pub mod mutec;
 pub mod as_from;
 pub use as_from::{AsFrom, AsInto, AsTryFrom, AsTryInto};
+pub mod from_binary;
+pub use from_binary::{FromBinary, FromBinarySized, ToBinary};
 
 use rand::distributions::uniform::{SampleRange, SampleUniform};
 use serde::{Serialize, Deserialize};
@@ -25,9 +27,20 @@ pub mod prelude {
         AsTryFrom,
         AsTryInto,
         method,
+        FromBinary,
+        FromBinarySized,
+        ToBinary
     };
 }
 
+/// A version of [println] that uses the same
+/// input syntax but only prints when
+/// the crate is not compiled with '--release'
+/// it is essentially equivalent to
+///```
+/// #[cfg(debug_assertations)]
+/// println!(/*whatever you gave it*/)
+///```
 #[macro_export]
 macro_rules! debug_println {
     () => {
@@ -67,8 +80,40 @@ macro_rules! assert_pattern_ne {
         }
     };
 }
+/// A macro which will only run code
+/// when the crate is not compiled
+/// with '--release'
+/// 
+/// It can be used with a block:
+///```should_panic
+/// # use abes_nice_things::debug;
+/// debug!({
+///     //Code only ran in debug mode
+/// # panic!("Yay!");
+/// });
+///```
+/// Or it can be used with an expression:
+///```should_panic
+/// # use abes_nice_things::debug;
+/// debug!(/*expression*/);
+/// # debug!(panic!("I AM HAVING A PANIC ATTACK"));
+///```
+/// For example:
+///```
+/// # use abes_nice_things::debug;
+/// debug!({
+///     println!("Yippy!");
+///     // Any additional code you want
+/// });
+///```
+///```
+/// # use abes_nice_things::debug;
+/// debug!(println!("Yippy!"));
+/// //     ^^^^^ can only have one thing
+///```
 #[macro_export]
 macro_rules! debug {
+    () => {};
     ($debug: stmt) => {
         #[cfg(debug_assertions)]
         $debug;
@@ -442,24 +487,9 @@ impl<T> Transceiver<T> {
     pub fn recv(&self) -> Result<T, RecvError> {
         self.rx.recv()
     }
-    pub fn call(&self, data: T) -> Result<T, TransError<T>> {
+    pub fn call(&self, data: T) -> Result<T, error::TransError<T>> {
         self.tx.send(data)?;
         Ok(self.rx.recv()?)
-    }
-}
-#[derive(Debug)]
-pub enum TransError<T> {
-    Send(SendError<T>),
-    Recv(RecvError)
-}
-impl<T> From<SendError<T>> for TransError<T> {
-    fn from(value: SendError<T>) -> Self {
-        TransError::Send(value)
-    }
-}
-impl<T> From<RecvError> for TransError<T> {
-    fn from(value: RecvError) -> Self {
-        TransError::Recv(value)
     }
 }
 /// A concrete type for storing the range types while Sized.
@@ -560,6 +590,8 @@ pub fn unwrap_none<T>(input: &Option<T>, message: &str) {
         panic!("{message}")
     }
 }
+/// Gets input from the terminal
+/// and returns it as a [String]
 pub fn input() -> String {
     let mut string: String = String::new();
     stdin().read_line(&mut string).unwrap();
@@ -613,44 +645,21 @@ pub fn input_yn(msg: &str) -> bool {
         }
     }
 }
-pub trait FromBinary {
-    fn from_binary(binary: &[u8]) -> Self;
-}
-pub trait FromBinarySized where Self: FromBinary {
-    const LEN: usize;
-    // fn read_next(mut source: impl std::io::Read) -> Self where Self: Sized {
-    //     let mut buf = [0u8; Self::LEN];
-    //     source.read_exact(&mut buf);
-    //     Self::from_binary(&buf)
-    // }
-}
-impl FromBinary for u8 {
-    fn from_binary(binary: &[u8]) -> Self {
-        binary[0]
+pub mod error {
+    #[derive(Debug)]
+    pub enum TransError<T> {
+        Send(super::SendError<T>),
+        Recv(super::RecvError)
     }
-}
-impl FromBinarySized for u8 {
-    const LEN: usize = 1;
-}
-impl FromBinary for u16 {
-    fn from_binary(binary: &[u8]) -> Self {
-        u16::from_le_bytes([binary[0], binary[1]])
+    impl<T> From<super::SendError<T>> for TransError<T> {
+        fn from(value: super::SendError<T>) -> Self {
+            TransError::Send(value)
+        }
     }
-}
-impl FromBinarySized for u16 {
-    const LEN: usize = 2;
-}
-pub trait ToBinary {
-    fn to_binary(self) -> Vec<u8>;
-}
-impl ToBinary for u8 {
-    fn to_binary(self) -> Vec<u8> {
-        Vec::from(self.to_le_bytes())
-    }
-}
-impl ToBinary for u16 {
-    fn to_binary(self) -> Vec<u8> {
-        Vec::from(self.to_le_bytes())
+    impl<T> From<super::RecvError> for TransError<T> {
+        fn from(value: super::RecvError) -> Self {
+            TransError::Recv(value)
+        }
     }
 }
 #[cfg(test)]
