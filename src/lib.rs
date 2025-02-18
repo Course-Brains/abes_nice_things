@@ -1,3 +1,6 @@
+//! A collection of types, functions, traits, and macros which
+//! I found to be helpful and improve my experience while programming
+
 pub mod mutec;
 pub mod as_from;
 pub use as_from::{AsFrom, AsInto, AsTryFrom, AsTryInto};
@@ -32,7 +35,6 @@ pub mod prelude {
         ToBinary
     };
 }
-
 /// A version of [println] that uses the same
 /// input syntax but only prints when
 /// the crate is not compiled with '--release'
@@ -602,7 +604,16 @@ pub fn input() -> String {
     }
     string
 }
-pub fn input_cond(cond: impl Fn(&String) -> Result<bool, String>) -> Result<String, String> {
+/// Runs the condition after getting input
+/// from the terminal. If nothing goes wrong,
+/// return either [Ok] with the contained
+/// [boolean] being whether or not the inputted
+/// [String] should be returned.
+/// However, if something does go wrong,
+/// you can return your set error type by
+/// having the condition return an [Err]
+/// containing the error itsefl.
+pub fn input_cond<E>(cond: impl Fn(&String) -> Result<bool, E>) -> Result<String, E> {
     loop {
         let input: String = input();
         match cond(&input) {
