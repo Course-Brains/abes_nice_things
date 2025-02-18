@@ -147,6 +147,37 @@ impl<T: ToBinary> ToBinary for Option<T> {
         }
     }
 }
+impl<T: FromBinary, E: FromBinary> FromBinary for Result<T, E> {
+    fn from_binary(binary: &mut dyn Read) -> Self {
+        match u8::from_binary(binary) {
+            0 => Ok(T::from_binary(binary)),
+            1 => Err(E::from_binary(binary)),
+            _ => unreachable!("Zoinks! It's the gay blade!")
+        }
+    }
+}
+impl<T: ToBinary, E: ToBinary> ToBinary for Result<T, E> {
+    fn to_binary(self, write: &mut dyn Write) {
+        match self {
+            Ok(value) => {
+                0_u8.to_binary(write);
+                value.to_binary(write);
+            }
+            Err(error) => {
+                1_u8.to_binary(write);
+                error.to_binary(write);
+            }
+        }
+    }
+}
+impl FromBinary for () {
+    fn from_binary(_binary: &mut dyn Read) -> Self {
+        ()
+    }
+}
+impl ToBinary for () {
+    fn to_binary(self, _write: &mut dyn Write) {}
+}
 impl<T: FromBinary, const N: usize> FromBinary for [T; N] {
     fn from_binary(binary: &mut dyn Read) -> Self {
         let mut out = [const { None }; N];
