@@ -4,28 +4,35 @@ use std::io::{Read, Write};
 pub trait FromBinary {
     fn from_binary(binary: &mut dyn Read) -> Self;
 }
-pub trait FromBinarySized where Self: FromBinary {
-    const LEN: usize;
-}
 pub trait ToBinary {
-    fn to_binary(self, write: &mut dyn Write);
+    fn to_binary(&self, binary: &mut dyn Write);
 }
+/// A convinience trait which is implemented for
+/// everything that implements both [FromBinary]
+/// and [ToBinary], meaning that instead of having
+/// your type restrictions be
+/// ```ignore
+/// impl<T: FromBinary + ToBinary> Thingamajig { ... }
+/// ```
+/// You can instead have the much shorter
+/// ```ignore
+/// impl<T: Binary> Thingamajig { ... }
+/// ```
+pub trait Binary where Self: FromBinary + ToBinary {}
+impl<T: FromBinary + ToBinary> Binary for T {}
 macro_rules! num_helper {
     ($($type: ty)*) => {
         $(
-            impl FromBinarySized for $type {
-                const LEN: usize = std::mem::size_of::<$type>();
-            }
             impl FromBinary for $type {
                 fn from_binary(binary: &mut dyn Read) -> Self {
-                    let mut chunk: [u8; Self::LEN] = [0; Self::LEN];
+                    let mut chunk: [u8; std::mem::size_of::<Self>()] = [0; std::mem::size_of::<Self>()];
                     binary.read_exact(&mut chunk).unwrap();
                     <$type>::from_le_bytes(chunk)
                 }
             }
             impl ToBinary for $type {
-                fn to_binary(self, write: &mut dyn Write) {
-                    write.write_all(&self.to_le_bytes()).unwrap()
+                fn to_binary(&self, binary: &mut dyn Write) {
+                    binary.write_all(&self.to_le_bytes()).unwrap()
                 }
             }
         )*
@@ -40,8 +47,8 @@ impl FromBinary for std::primitive::char {
     }
 }
 impl ToBinary for std::primitive::char {
-    fn to_binary(self, write: &mut dyn Write) {
-        (self as u32).to_binary(write)
+    fn to_binary(&self, binary: &mut dyn Write) {
+        (*self as u32).to_binary(binary)
     }
 }
 impl FromBinary for bool {
@@ -61,17 +68,14 @@ impl FromBinary for bool {
         }
     }
 }
-impl FromBinarySized for bool {
-    const LEN: usize = 1;
-}
 impl ToBinary for bool {
-    fn to_binary(self, write: &mut dyn Write) {
+    fn to_binary(&self, binary: &mut dyn Write) {
         match self {
             true => {
-                write.write_all(&[0b0000_0001]).unwrap()
+                binary.write_all(&[0b0000_0001]).unwrap()
             }
             false => {
-                write.write_all(&[0b0000_0000]).unwrap()
+                binary.write_all(&[0b0000_0000]).unwrap()
             }
         }
     }
@@ -88,12 +92,12 @@ impl FromBinary for String {
     }
 }
 impl ToBinary for String {
-    fn to_binary(self, write: &mut dyn Write) {
+    fn to_binary(&self, binary: &mut dyn Write) {
         #[cfg(feature = "dyn_binary")]
-        self.len().to_binary(write);
+        self.len().to_binary(binary);
         #[cfg(not(feature = "dyn_binary"))]
-        (self.len() as u32).to_binary(write);
-        write.write_all(self.as_bytes()).unwrap();
+        (self.len() as u32).to_binary(binary);
+        binary.write_all(self.as_bytes()).unwrap();
     }
 }
 impl<T: FromBinary> FromBinary for Vec<T> {
@@ -110,13 +114,13 @@ impl<T: FromBinary> FromBinary for Vec<T> {
     }
 }
 impl<T: ToBinary> ToBinary for Vec<T> {
-    fn to_binary(self, write: &mut dyn Write) {
+    fn to_binary(&self, binary: &mut dyn Write) {
         #[cfg(feature = "dyn_binary")]
-        self.len().to_binary(write);
+        self.len().to_binary(binary);
         #[cfg(not(feature = "dyn_binary"))]
-        (self.len() as u32).to_binary(write);
+        (self.len() as u32).to_binary(binary);
         for i in self {
-            i.to_binary(write)
+            i.to_binary(binary)
         }
     }
 }
@@ -135,14 +139,14 @@ impl<T: FromBinary> FromBinary for Option<T> {
     }
 }
 impl<T: ToBinary> ToBinary for Option<T> {
-    fn to_binary(self, write: &mut dyn Write) {
+    fn to_binary(&self, binary: &mut dyn Write) {
         match self {
             Some(value) => {
-                true.to_binary(write);
-                value.to_binary(write);
+                true.to_binary(binary);
+                value.to_binary(binary);
             }
             None => {
-                false.to_binary(write)
+                false.to_binary(binary)
             }
         }
     }
@@ -157,15 +161,15 @@ impl<T: FromBinary, E: FromBinary> FromBinary for Result<T, E> {
     }
 }
 impl<T: ToBinary, E: ToBinary> ToBinary for Result<T, E> {
-    fn to_binary(self, write: &mut dyn Write) {
+    fn to_binary(&self, binary: &mut dyn Write) {
         match self {
             Ok(value) => {
-                0_u8.to_binary(write);
-                value.to_binary(write);
+                0_u8.to_binary(binary);
+                value.to_binary(binary);
             }
             Err(error) => {
-                1_u8.to_binary(write);
-                error.to_binary(write);
+                1_u8.to_binary(binary);
+                error.to_binary(binary);
             }
         }
     }
@@ -176,7 +180,7 @@ impl FromBinary for () {
     }
 }
 impl ToBinary for () {
-    fn to_binary(self, _write: &mut dyn Write) {}
+    fn to_binary(&self, _binary: &mut dyn Write) {}
 }
 impl<T: FromBinary, const N: usize> FromBinary for [T; N] {
     fn from_binary(binary: &mut dyn Read) -> Self {
@@ -188,9 +192,9 @@ impl<T: FromBinary, const N: usize> FromBinary for [T; N] {
     }
 }
 impl<T: ToBinary, const N: usize> ToBinary for [T; N] {
-    fn to_binary(self, write: &mut dyn Write) {
+    fn to_binary(&self, binary: &mut dyn Write) {
         for value in self.into_iter() {
-            value.to_binary(write);
+            value.to_binary(binary);
         }
     }
 }
@@ -205,12 +209,22 @@ impl FromBinary for std::cmp::Ordering {
     }
 }
 impl ToBinary for std::cmp::Ordering {
-    fn to_binary(self, write: &mut dyn Write) {
+    fn to_binary(&self, binary: &mut dyn Write) {
         match self {
-            std::cmp::Ordering::Equal => 0_u8.to_binary(write),
-            std::cmp::Ordering::Less => 1_u8.to_binary(write),
-            std::cmp::Ordering::Greater => 2_u8.to_binary(write)
+            std::cmp::Ordering::Equal => 0_u8.to_binary(binary),
+            std::cmp::Ordering::Less => 1_u8.to_binary(binary),
+            std::cmp::Ordering::Greater => 2_u8.to_binary(binary)
         }
+    }
+}
+impl<T: FromBinary> FromBinary for Box<T> {
+    fn from_binary(binary: &mut dyn Read) -> Self {
+        Box::new(T::from_binary(binary))
+    }
+}
+impl<T: ToBinary> ToBinary for Box<T> {
+    fn to_binary(&self, binary: &mut dyn Write) {
+        self.as_ref().to_binary(binary);
     }
 }
 impl FromBinary for std::net::Ipv4Addr {
@@ -219,8 +233,8 @@ impl FromBinary for std::net::Ipv4Addr {
     }
 }
 impl ToBinary for std::net::Ipv4Addr {
-    fn to_binary(self, write: &mut dyn Write) {
-        self.to_bits().to_binary(write)
+    fn to_binary(&self, binary: &mut dyn Write) {
+        self.to_bits().to_binary(binary)
     }
 }
 impl FromBinary for std::net::Ipv6Addr {
@@ -229,8 +243,8 @@ impl FromBinary for std::net::Ipv6Addr {
     }
 }
 impl ToBinary for std::net::Ipv6Addr {
-    fn to_binary(self, write: &mut dyn Write) {
-        self.to_bits().to_binary(write)
+    fn to_binary(&self, binary: &mut dyn Write) {
+        self.to_bits().to_binary(binary)
     }
 }
 impl FromBinary for std::net::IpAddr {
@@ -243,15 +257,15 @@ impl FromBinary for std::net::IpAddr {
     }
 }
 impl ToBinary for std::net::IpAddr {
-    fn to_binary(self, write: &mut dyn Write) {
+    fn to_binary(&self, binary: &mut dyn Write) {
         match self {
             std::net::IpAddr::V4(addr) => {
-                0_u8.to_binary(write);
-                addr.to_binary(write);
+                0_u8.to_binary(binary);
+                addr.to_binary(binary);
             }
             std::net::IpAddr::V6(addr) => {
-                1_u8.to_binary(write);
-                addr.to_binary(write);
+                1_u8.to_binary(binary);
+                addr.to_binary(binary);
             }
         }
     }
@@ -265,9 +279,9 @@ impl FromBinary for std::net::SocketAddrV4 {
     }
 }
 impl ToBinary for std::net::SocketAddrV4 {
-    fn to_binary(self, write: &mut dyn Write) {
-        self.ip().to_binary(write);
-        self.port().to_binary(write);
+    fn to_binary(&self, binary: &mut dyn Write) {
+        self.ip().to_binary(binary);
+        self.port().to_binary(binary);
     }
 }
 impl FromBinary for std::net::SocketAddrV6 {
@@ -281,11 +295,11 @@ impl FromBinary for std::net::SocketAddrV6 {
     }
 }
 impl ToBinary for std::net::SocketAddrV6 {
-    fn to_binary(self, write: &mut dyn Write) {
-        self.ip().to_binary(write);
-        self.port().to_binary(write);
-        self.flowinfo().to_binary(write);
-        self.scope_id().to_binary(write);
+    fn to_binary(&self, binary: &mut dyn Write) {
+        self.ip().to_binary(binary);
+        self.port().to_binary(binary);
+        self.flowinfo().to_binary(binary);
+        self.scope_id().to_binary(binary);
     }
 }
 impl FromBinary for std::net::SocketAddr {
@@ -298,15 +312,15 @@ impl FromBinary for std::net::SocketAddr {
     }
 }
 impl ToBinary for std::net::SocketAddr {
-    fn to_binary(self, write: &mut dyn Write) {
+    fn to_binary(&self, binary: &mut dyn Write) {
         match self {
             std::net::SocketAddr::V4(addr) => {
-                0_u8.to_binary(write);
-                addr.to_binary(write)
+                0_u8.to_binary(binary);
+                addr.to_binary(binary)
             }
             std::net::SocketAddr::V6(addr) => {
-                1_u8.to_binary(write);
-                addr.to_binary(write)
+                1_u8.to_binary(binary);
+                addr.to_binary(binary)
             }
         }
     }
@@ -322,17 +336,17 @@ impl<T: FromBinary> FromBinary for std::ops::Bound<T> {
     }
 }
 impl<T: ToBinary> ToBinary for std::ops::Bound<T> {
-    fn to_binary(self, write: &mut dyn Write) {
+    fn to_binary(&self, binary: &mut dyn Write) {
         match self {
             std::ops::Bound::Excluded(point) => {
-                0_u8.to_binary(write);
-                point.to_binary(write)
+                0_u8.to_binary(binary);
+                point.to_binary(binary)
             }
             std::ops::Bound::Included(point) => {
-                1_u8.to_binary(write);
-                point.to_binary(write)
+                1_u8.to_binary(binary);
+                point.to_binary(binary)
             }
-            std::ops::Bound::Unbounded => 2_u8.to_binary(write)
+            std::ops::Bound::Unbounded => 2_u8.to_binary(binary)
         }
     }
 }
@@ -342,9 +356,9 @@ impl<T: FromBinary> FromBinary for std::ops::Range<T> {
     }
 }
 impl<T: ToBinary> ToBinary for std::ops::Range<T> {
-    fn to_binary(self, write: &mut dyn Write) {
-        self.start.to_binary(write);
-        self.end.to_binary(write);
+    fn to_binary(&self, binary: &mut dyn Write) {
+        self.start.to_binary(binary);
+        self.end.to_binary(binary);
     }
 }
 impl<T: FromBinary> FromBinary for std::ops::RangeFrom<T> {
@@ -353,8 +367,8 @@ impl<T: FromBinary> FromBinary for std::ops::RangeFrom<T> {
     }
 }
 impl<T: ToBinary> ToBinary for std::ops::RangeFrom<T> {
-    fn to_binary(self, write: &mut dyn Write) {
-        self.start.to_binary(write)
+    fn to_binary(&self, binary: &mut dyn Write) {
+        self.start.to_binary(binary)
     }
 }
 impl<T: FromBinary> FromBinary for std::ops::RangeInclusive<T> {
@@ -363,10 +377,9 @@ impl<T: FromBinary> FromBinary for std::ops::RangeInclusive<T> {
     }
 }
 impl<T: ToBinary> ToBinary for std::ops::RangeInclusive<T> {
-    fn to_binary(self, write: &mut dyn Write) {
-        let (low, high) = self.into_inner();
-        low.to_binary(write);
-        high.to_binary(write);
+    fn to_binary(&self, binary: &mut dyn Write) {
+        self.start().to_binary(binary);
+        self.end().to_binary(binary);
     }
 }
 impl<T: FromBinary> FromBinary for std::ops::RangeTo<T> {
@@ -375,8 +388,8 @@ impl<T: FromBinary> FromBinary for std::ops::RangeTo<T> {
     }
 }
 impl<T: ToBinary> ToBinary for std::ops::RangeTo<T> {
-    fn to_binary(self, write: &mut dyn Write) {
-        self.end.to_binary(write)
+    fn to_binary(&self, binary: &mut dyn Write) {
+        self.end.to_binary(binary)
     }
 }
 impl<T: FromBinary> FromBinary for std::ops::RangeToInclusive<T> {
@@ -385,10 +398,32 @@ impl<T: FromBinary> FromBinary for std::ops::RangeToInclusive<T> {
     }
 }
 impl<T: ToBinary> ToBinary for std::ops::RangeToInclusive<T> {
-    fn to_binary(self, write: &mut dyn Write) {
-        self.end.to_binary(write)
+    fn to_binary(&self, binary: &mut dyn Write) {
+        self.end.to_binary(binary)
     }
 }
+// Cannot implement it for Instant because rust is mean and a bully :(
+// aka. I cannot access the underlying numbers used to store the
+// Instant meaning that I cannot convert them to/from binary
+impl FromBinary for std::time::Duration {
+    fn from_binary(binary: &mut dyn Read) -> Self {
+        Self::new(
+            u64::from_binary(binary),
+            u32::from_binary(binary)
+        )
+    }
+}
+impl ToBinary for std::time::Duration {
+    fn to_binary(&self, binary: &mut dyn Write) {
+        self.as_secs().to_binary(binary);
+        self.subsec_nanos().to_binary(binary);
+    }
+}
+/*impl FromBinary for std:: {
+    fn from_binary(binary: &mut dyn Read) -> Self {
+        
+    }
+}*/
 #[cfg(test)]
 mod tests {
     use super::{FromBinary, ToBinary};

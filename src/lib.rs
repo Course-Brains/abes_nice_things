@@ -1,19 +1,16 @@
 //! A collection of types, functions, traits, and macros which
 //! I found to be helpful and improve my experience while programming
 
-pub mod mutec;
 pub mod as_from;
 pub use as_from::{AsFrom, AsInto, AsTryFrom, AsTryInto};
 pub mod from_binary;
-pub use from_binary::{FromBinary, FromBinarySized, ToBinary};
+pub use from_binary::{FromBinary,ToBinary, Binary};
+pub mod item;
+pub use item::Item;
 
-use rand::distributions::uniform::{SampleRange, SampleUniform};
-use serde::{Serialize, Deserialize};
 use std::{
     io::stdin,
-    ops::{Range, RangeBounds, RangeInclusive},
     sync::{Mutex, MutexGuard},
-    fmt::Debug
 };
 
 pub use abes_nice_procs::{FromBinary, ToBinary, method};
@@ -31,8 +28,8 @@ pub mod prelude {
         AsTryInto,
         method,
         FromBinary,
-        FromBinarySized,
-        ToBinary
+        ToBinary,
+        Binary
     };
 }
 /// A version of [println] that uses the same
@@ -256,213 +253,6 @@ impl<'a, T> Drop for OnPanic<'a, T> {
 /// the y and z axes, but they do not need to have the same
 /// lengths as each other. So x could be 3 long, while
 /// z could be 5 long.
-pub struct NVec<T, const N: usize> {
-    inner: Vec<T>,
-    lengths: [usize; N],
-}
-impl<T, const N: usize> NVec<T, N> {
-    /// Creates an empty [NVec].
-    /// Eqivalent to [Vec::new].
-    pub const fn new() -> Self {
-        NVec {
-            inner: Vec::new(),
-            lengths: [0; N]
-        }
-    }
-    pub fn to_vec(&self) -> &Vec<T> {
-        &self.inner
-    }
-    pub unsafe fn set_inner(&mut self, inner: Vec<T>, lengths: &[usize; N]) {
-        self.inner = inner;
-        self.lengths = *lengths;
-    }
-    /// Assumes the correct number of indexes are given
-    fn get_index(&self, indexes: &[usize]) -> usize {
-        assert_eq!(
-            indexes.len(), self.lengths.len(),
-            "Incorrect number of indexes given:\nexpected: {}, got:{}", self.lengths.len(), indexes.len());
-        let mut sum: usize = self.lengths.iter().product();
-        let mut target: usize = 0;
-        for index in 0..N {
-            // Each index needs to be multiplied by
-            // the length of everything it contains
-            sum /= self.lengths[index];
-            target += indexes[index]*sum;
-        }
-        return target
-    }
-    /// Gets a reference to the value at the given position.
-    pub fn get(&self, indexes: &[usize; N]) -> &T {
-        &self.inner[
-            self.get_index(indexes)
-        ]
-    }
-    /// Same as [get](NVec::get) but without checks that
-    /// the correct number of indexes have been given.
-    pub unsafe fn get_slice(&self, indexes: &[usize]) -> &T {
-        &self.inner[
-            self.get_index(indexes)
-        ]
-    }
-    /// Gets a mutable reference to the value at the given position.
-    pub fn get_mut(&mut self, indexes: &[usize; N]) -> &mut T {
-        // index needs to be defined before we start getting the actual value
-        // because otherwise it will be using an immutable reference to
-        // self while getting a mutable reference to something owned by self
-        let index: usize = self.get_index(indexes);
-        return &mut self.inner[index]
-    }
-    /// Same as [get_mut](NVec::get_mut) but without checking that
-    /// the correct number of indexes have been given.
-    pub unsafe fn get_slice_mut(&mut self, indexes: &[usize]) -> &mut T {
-        let index: usize = self.get_index(indexes);
-        return &mut self.inner[index]
-    }
-    pub fn clear(&mut self) {
-        self.inner = Vec::new();
-        self.lengths = [0; N];
-    }
-}
-impl<T, const N: usize> Default for NVec<T, N> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl<T, const N: usize> std::ops::Index<[usize; N]> for NVec<T, N> {
-    type Output = T;
-    fn index(&self, index: [usize; N]) -> &Self::Output {
-        &self.inner[
-            self.get_index(&index)
-        ]
-    }
-}
-impl<T, const N: usize> std::ops::IndexMut<[usize; N]> for NVec<T, N> {
-    fn index_mut(&mut self, index: [usize; N]) -> &mut Self::Output {
-        let true_index: usize = self.get_index(&index);
-        &mut self.inner[true_index]
-    }
-}
-impl<T, const N: usize> std::ops::Index<&[usize]> for NVec<T, N> {
-    type Output = T;
-    fn index(&self, index: &[usize]) -> &Self::Output {
-        &self.inner[
-            self.get_index(&index)
-        ]
-    }
-}
-impl<T, const N: usize> std::ops::IndexMut<&[usize]> for NVec<T, N> {
-    fn index_mut(&mut self, index: &[usize]) -> &mut Self::Output {
-        let true_index: usize = self.get_index(&index);
-        &mut self.inner[true_index]
-    }
-}
-impl<T: rand::Fill, const N: usize> rand::Fill for NVec<T, N> {
-    fn try_fill<R: rand::Rng + ?Sized>(&mut self, rng: &mut R) -> Result<(), rand::Error> {
-        for item in self.inner.iter_mut() {
-            rng.try_fill(item)?
-        }
-        Ok(())
-    }
-}
-pub struct ArgChecks<'a, const N: usize> {
-    checks: [ArgCheck<'a> ; N]
-}
-impl<'a, const N: usize> ArgChecks<'a, N> {
-    pub const fn new(checks: [ArgCheck<'a>; N]) -> Self {
-        ArgChecks {
-            checks
-        }
-    }
-    pub fn check(&self) {
-        self.check_with(&mut std::env::args())
-    }
-    pub fn check_with(&self, args: &mut std::env::Args) {
-        while let Some(arg) = args.next() {
-            if let Some(check) = self.contains(arg) {
-                match check.args {
-                    Some(num_args) => {
-                        let mut sub_args = Vec::with_capacity(num_args);
-                        for _ in 0..num_args {
-                            // 7 layers of indentation pain
-                            sub_args.push(args.next().unwrap())
-                        }
-                        (check.run)(sub_args)
-                    }
-                    None => {
-                        (check.run)(Vec::new())
-                    }
-                }
-            }
-        }
-    }
-    fn contains(&self, other: String) -> Option<&ArgCheck> {
-        for check in self.checks.iter() {
-            if check.trigger == other {
-                return Some(check)
-            }
-        }
-        None
-    }
-}
-pub struct ArgCheck<'a> {
-    pub trigger: &'a str,
-    pub args: Option<usize>,
-    pub run: &'a dyn Fn(Vec<String>),
-}
-/// An async adjacent way to generate things using threads.
-pub struct ThreadInit<T: std::marker::Send + Debug + 'static> {
-    data: std::sync::OnceLock<T>,
-    handle: Option<std::thread::JoinHandle<T>>,
-    method: Box<dyn Fn() -> T + std::marker::Send>
-}
-impl<T: std::marker::Send + Debug + 'static> ThreadInit<T> {
-    /// Creates the instance and starts the thread's operations.
-    pub fn new<C: Fn() -> T + std::marker::Send + Clone + 'static>(creator:&'static C) -> Self {
-        ThreadInit {
-            data: std::sync::OnceLock::new(),
-            handle: Some(std::thread::spawn(creator.clone())),
-            method: Box::new(creator.clone())
-        }
-    }
-    /// Joins with the thread and gets the data returned.
-    /// If it already happened then it will just give a stored value.
-    /// Any error returned is from the threads joining.
-    pub fn get(&mut self) -> Result<&T, Box<dyn std::any::Any + std::marker::Send>> {
-        // If we already have the value, then we cam just return it
-        if let Some(data) = self.data.get() {
-            return Ok(data)
-        }
-        // When data gets initialized, the handle gets consumed,
-        // and at this point, that hasn't happened.
-        // Meaning that there is no situation where at this point,
-        // data has already been set, or the handle has been consumed
-        self.data.set(
-            self.handle.take().expect("Something has gone very very wrong")
-            .join()?
-        ).expect("Something has gone very very wrong");
-        // If we can't get the value we literally just set then I don't even know anymore
-        return Ok(self.data.get().expect("Something has gone very very wrong"));
-    }
-    /// Removes the data from the thread(if there was any),
-    /// sets the thread to regenerate the data,
-    /// and returns the data that there, if there was any.
-    pub fn reset(&mut self) -> Option<T> where  dyn Fn() -> T + std::marker::Send: Clone{
-        let out = self.data.take();
-        self.handle = Some(std::thread::spawn((*self.method).clone()));
-        return out
-    }
-    /// Consumes the instance and if the data has already been
-    /// generated, it returns that. But if it hasn't been
-    /// then it finishes generation then does it.
-    /// As such, until it finishes generation,
-    /// it blocks the current thread.
-    pub fn unwrap(mut self) -> T {
-        if let Some(data) = self.data.take() {
-            return data
-        }
-        return self.handle.unwrap().join().unwrap()
-    }
-}
 use std::sync::mpsc::{Sender, Receiver, channel, SendError, RecvError};
 pub struct Transceiver<T> {
     tx: Sender<T>,
@@ -492,78 +282,6 @@ impl<T> Transceiver<T> {
     pub fn call(&self, data: T) -> Result<T, error::TransError<T>> {
         self.tx.send(data)?;
         Ok(self.rx.recv()?)
-    }
-}
-/// A concrete type for storing the range types while Sized.
-/// Currently only has [Range] and [RangeInclusive]
-#[derive(PartialEq, Debug, Serialize, Deserialize)]
-pub enum Ranges<T> { 
-    Range(Range<T>),
-    Inclusive(RangeInclusive<T>),
-}
-impl<T> Ranges<T> {
-    pub fn unwrap_range(self) -> Range<T> {
-        if let Ranges::Range(range) = self {
-            return range;
-        }
-        panic!("Attempted to unwrap to range on non-range value ")
-    }
-    pub fn unwrap_inclusive(self) -> RangeInclusive<T> {
-        if let Ranges::Inclusive(range) = self {
-            return range;
-        }
-        panic!("Attempted to unwrap to inclusive range on non inclusive range value")
-    }
-}
-impl<T: Default> Default for Ranges<T> {
-    fn default() -> Self {
-        return Ranges::Range(Default::default());
-    }
-}
-impl<T: Clone> Clone for Ranges<T> {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Range(range) => Ranges::Range(range.clone()),
-            Self::Inclusive(range) => Ranges::Inclusive(range.clone()),
-        }
-    }
-}
-impl<T: SampleUniform + PartialOrd> SampleRange<T> for Ranges<T> {
-    fn sample_single<R: rand::prelude::RngCore + ?Sized>(self, rng: &mut R) -> T {
-        match self {
-            Ranges::Range(range) => return range.sample_single(rng),
-            Ranges::Inclusive(range) => return range.sample_single(rng),
-        }
-    }
-    fn is_empty(&self) -> bool {
-        match self {
-            Ranges::Range(range) => return range.is_empty(),
-            Ranges::Inclusive(range) => return range.is_empty(),
-        }
-    }
-}
-impl<T> From<Range<T>> for Ranges<T> {
-    fn from(value: Range<T>) -> Self {
-        return Ranges::Range(value);
-    }
-}
-impl<T> From<RangeInclusive<T>> for Ranges<T> {
-    fn from(value: RangeInclusive<T>) -> Self {
-        return Ranges::Inclusive(value);
-    }
-}
-impl<T> RangeBounds<T> for Ranges<T> {
-    fn start_bound(&self) -> std::ops::Bound<&T> {
-        match self {
-            Ranges::Range(range) => return range.start_bound(),
-            Ranges::Inclusive(range) => return range.start_bound(),
-        }
-    }
-    fn end_bound(&self) -> std::ops::Bound<&T> {
-        match self {
-            Ranges::Range(range) => return range.end_bound(),
-            Ranges::Inclusive(range) => return range.end_bound(),
-        }
     }
 }
 pub enum Either<T, U> {
@@ -670,32 +388,6 @@ pub mod error {
     impl<T> From<super::RecvError> for TransError<T> {
         fn from(value: super::RecvError) -> Self {
             TransError::Recv(value)
-        }
-    }
-}
-#[cfg(test)]
-mod tests {
-    mod thread_init {
-        use super::super::ThreadInit;
-        #[test]
-        fn new() {
-            let _a = ThreadInit::new(&|| {5});
-        }
-        #[test]
-        fn normal() {
-            let mut init = ThreadInit::new(&|| {"uisx".to_string()});
-            assert_eq!(init.get().unwrap(), "uisx");
-        }
-        #[test]
-        fn unwrap_gen() {
-            let init = ThreadInit::new(&|| {"shrug"});
-            assert_eq!(init.unwrap(), "shrug");
-        }
-        #[test]
-        fn unwrap_pre_gen() {
-            let mut init = ThreadInit::new(&|| {15});
-            assert_eq!(*init.get().unwrap(), 15);
-            assert_eq!(init.unwrap(), 15);
         }
     }
 }
