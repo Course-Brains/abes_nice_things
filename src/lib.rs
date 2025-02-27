@@ -7,7 +7,7 @@ pub mod from_binary;
 pub use from_binary::{Binary, FromBinary, ToBinary};
 pub mod item;
 pub use item::Item;
-
+pub mod input;
 use std::{
     io::stdin,
     sync::{Mutex, MutexGuard},
@@ -264,22 +264,25 @@ impl<T, U> Either<T, U> {
         Either::U(u)
     }
 }
-
-pub fn gen_check<T>(gen: impl Fn() -> T, check: impl Fn(&T) -> bool) -> T {
-    loop {
-        let value: T = gen();
-        if check(&value) {
-            return value;
-        }
-    }
-}
-pub fn unwrap_none<T>(input: &Option<T>, message: &str) {
-    if let Some(_) = input {
-        panic!("{message}")
-    }
-}
 /// Gets input from the terminal
-/// and returns it as a [String]
+/// and returns it as a [String].
+/// Specifically, it will block the
+/// current [thread](std::thread::Thread)
+/// until the user presses enter in the
+/// terminal and then returns what they
+/// typed before they pressed enter
+/// (meaning the new-line itself is
+/// excluded).
+/// ```no_run
+/// # use abes_nice_things::input();
+/// # fn main() {
+/// match input().as_str() {
+///     "Hello" => println!("World"),
+///     "foo" => println!("bar"),
+///     _ => println!("OH NO")
+/// }
+/// # }
+/// ```
 pub fn input() -> String {
     let mut string: String = String::new();
     stdin().read_line(&mut string).unwrap();
@@ -290,7 +293,7 @@ pub fn input() -> String {
     }
     string
 }
-/// Runs the condition after getting input
+/// Runs the condition after getting [input]
 /// from the terminal. If nothing goes wrong,
 /// return either [Ok] with the contained
 /// [boolean] being whether or not the inputted
@@ -301,7 +304,7 @@ pub fn input() -> String {
 /// containing the error itsefl.
 pub fn input_cond<E>(cond: impl Fn(&String) -> Result<bool, E>) -> Result<String, E> {
     loop {
-        let input: String = input();
+        let input = input();
         match cond(&input) {
             Ok(value) => {
                 if value {
@@ -309,23 +312,6 @@ pub fn input_cond<E>(cond: impl Fn(&String) -> Result<bool, E>) -> Result<String
                 }
             }
             Err(error) => return Err(error),
-        }
-    }
-}
-pub fn input_allow(allow: &[String]) -> String {
-    loop {
-        let input = input();
-        if allow.contains(&input) {
-            return input;
-        }
-    }
-}
-pub fn input_allow_msg(allow: &[String], msg: &str) -> String {
-    loop {
-        println!("{msg}");
-        let input = input();
-        if allow.contains(&input) {
-            return input;
         }
     }
 }

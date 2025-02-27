@@ -994,25 +994,33 @@ impl<T: ToBinary> ToBinary for std::ops::RangeToInclusive<T> {
 #[cfg(feature = "transmute_binary")]
 impl FromBinary for std::time::Instant {
     fn from_binary(binary: &mut dyn Read) -> Self {
-        transmute(Instant::from_binary(binary))
+        unsafe {
+            transmute(Instant::from_binary(binary))
+        }
     }
 }
 #[cfg(feature = "transmute_binary")]
 impl ToBinary for std::time::Instant {
     fn to_binary(&self, binary: &mut dyn Write) {
-        transmute::<Self, Instant>(self).to_binary(binary)
+        unsafe {
+            transmute::<Self, Instant>(*self).to_binary(binary)
+        }
     }
 }
 #[cfg(feature = "transmute_binary")]
 impl FromBinary for std::time::SystemTime {
     fn from_binary(binary: &mut dyn Read) -> Self {
-        transmute(Instant::from_binary(binary))
+        unsafe {
+            transmute(Instant::from_binary(binary))
+        }
     }
 }
 #[cfg(feature = "transmute_binary")]
 impl ToBinary for std::time::SystemTime {
     fn to_binary(&self, binary: &mut dyn Write) {
-        transmute::<Self, Instant>(self).to_binary(binary)
+        unsafe {
+            transmute::<Self, Instant>(*self).to_binary(binary)
+        }
     }
 }
 impl FromBinary for std::time::Duration {
@@ -1190,19 +1198,25 @@ impl FromBinary for std::process::ExitCode {
 #[cfg(feature = "transmute_binary")]
 impl ToBinary for std::process::ExitCode {
     fn to_binary(&self, binary: &mut dyn Write) {
-        transmute::<Self, u8>(self).to_binary(binary);
+        unsafe {
+            transmute::<Self, u8>(*self).to_binary(binary);
+        }
     }
 }
 #[cfg(feature = "transmute_binary")]
 impl FromBinary for std::process::ExitStatus {
     fn from_binary(binary: &mut dyn Read) -> Self {
-        transmute(i32::from_binary(binary))
+        unsafe {
+            transmute(i32::from_binary(binary))
+        }
     }
 }
 #[cfg(feature = "transmute_binary")]
 impl ToBinary for std::process::ExitStatus {
     fn to_binary(&self, binary: &mut dyn Write) {
-        transmute::<Self, i32>(self).to_binary(binary)
+        unsafe {
+            transmute::<Self, i32>(*self).to_binary(binary)
+        }
     }
 }
 impl<T: FromBinary> FromBinary for std::sync::Mutex<T> {
@@ -1348,15 +1362,13 @@ mod tests {
         num_helper!(u32, u32,);
         num_helper!(u64, u64,);
         num_helper!(u128, u128,);
-        #[cfg(feature = "dyn_binary")]
-        num_helper!(usize, usize,);
+        num_helper!(usize, usize_dyn_binary,);
         num_helper!(i8, i8,);
         num_helper!(i16, i16,);
         num_helper!(i32, i32,);
         num_helper!(i64, i64,);
         num_helper!(i128, i128,);
-        #[cfg(feature = "dyn_binary")]
-        num_helper!(isize, isize);
+        num_helper!(isize, isize_dyn_binary);
     }
     mod bool {
         use super::{FromBinary, ToBinary, VecDeque};
@@ -1393,6 +1405,26 @@ mod tests {
             let value = VecDeque::from([1,2,7,83]);
             value.to_binary(&mut binary);
             assert_eq!(value, VecDeque::from_binary(&mut binary))
+        }
+    }
+    #[cfg(feature = "transmute_binary")]
+    mod transmute_binary {
+        use std::os::unix::process::ExitStatusExt;
+
+        use super::{FromBinary, ToBinary, VecDeque};
+        #[test]
+        fn exit_code() {
+            let val = std::process::ExitCode::FAILURE;
+            let mut binary = VecDeque::new();
+            val.to_binary(&mut binary);
+            assert_eq!(std::process::ExitCode::from_binary(&mut binary), val)
+        }
+        #[test]
+        fn exit_status() {
+            let val = std::process::ExitStatus::from_raw(7);
+            let mut binary = VecDeque::new();
+            val.to_binary(&mut binary);
+            assert_eq!(std::process::ExitStatus::from_binary(&mut binary), val)
         }
     }
 }
