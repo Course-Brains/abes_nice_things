@@ -44,8 +44,89 @@ use std::mem::transmute;
 /// in the order of "num" -> "vec" -> "option" we have
 /// to also [write](Write) in the order of "num" ->
 /// "vec" -> "option" not the opposite.
+/// # Enums
+/// While that may work for structs, it will not work for enums.
+/// Enums require a way to determine which variant is being used.
+/// The standard solution I have come up with is to store
+/// that as a [u8] placed before the data.
+/// (If you need more than a [u8] to store the variant numbers,
+/// then you could store it in a larger number but I don't think
+/// that situation is likely)
+/// This is most simply shown with enums that do not contain
+/// data and just differentiate which variant is being used.
+/// ```
+/// # use abes_nice_things::FromBinary;
+/// # use std::io::Read;
+/// enum Example {
+///     Variant1,
+///     Variant2
+/// }
+/// impl FromBinary for Example {
+///     fn from_binary(binary: &mut dyn Read) -> Self {
+///         match u8::from_binary(binary) {
+///             0 => Example::Variant1,
+///             1 => Example::Variant2,
+///             _ => unreachable!("Bad format")
+///   // Notice this ^^^^^^^^^^^^^^^^^^^^^^^^^^
+///         }
+///     }
+/// }
+/// ```
+/// Because [u8] implements [ToBinary] we can just specify
+/// a [u8] to show the variants and then just convert it
+/// [from binary](FromBinary::from_binary).
+/// Also, because match requires you handle all possiblities,
+/// we do need a default case, however, assuming the correct
+/// binary is given in the correct format, it should never
+/// be reached and is therefore [unreachable].
+/// Notably, you don't actually have to conform to how I
+/// show which variant is being used,
+/// the only thing that matters is that it is able to
+/// determine which is being used, and you do the opposite
+/// in order to convert [to binary](ToBinary::to_binary).
+/// 
+/// While this works for some enums, it does not work if
+/// they have data in their variants. The way we get around
+/// that is by just by converting all their data [to binary](ToBinary::to_binary).
+/// ```
+/// # use abes_nice_things::FromBinary;
+/// # use std::io::Read;
+/// enum Example<T: FromBinary> {
+///     EmptyVariant,
+///     TupleVariant(u8, T),
+///     StructVariant {
+///         field1: String,
+///         field2: Vec<T>
+///     }
+/// }
+/// impl<T: FromBinary> FromBinary for Example<T> {
+///     fn from_binary(binary: &mut dyn Read) -> Self {
+///         match u8::from_binary(binary) {
+///             0 => Example::EmptyVariant,
+///             1 => Example::TupleVariant(
+///                     u8::from_binary(binary),
+///                     T::from_binary(binary)
+///                 ),
+///             2 => Example::StructVariant {
+///                     field1: String::from_binary(binary),
+///                     field2: Vec::from_binary(binary)
+///                     // Notice lack of generics
+///                 },
+///             _ => unreachable!("Bad format")
+///         }
+///     }
+/// }
+/// ```
+/// Because [u8] and [String] both unconditionally
+/// implement [FromBinary], we can just get them
+/// from the binary. Similarly, T and [Vec<T>]
+/// both implement [FromBinary] so long as
+/// T implements [FromBinary]. Meaning that
+/// because we ensure that T must implement
+/// [FromBinary], we can just do them similarly
+/// to the [u8] and [String].
 pub trait FromBinary {
-    /// This mothod allows for easier converson
+    /// This method allows for easier converson
     /// from binary while staying safe
     /// (assuming you are converting what you think you are).
     /// 
@@ -122,9 +203,167 @@ pub trait FromBinary {
     /// takes in anything that implements [Read],
     /// So long as your data source implements [Read],
     /// no extra code has to be written.
+    /// 
+    /// For more infomation see the [trait docs](FromBinary)
     fn from_binary(binary: &mut dyn Read) -> Self;
 }
+/// This trait is designed to allow for easier conversion to binary
+/// Long gone shall the days be of manually using [Write]
+/// and filling from buffers. Now you can literally just
+/// ```ignore
+/// MyStruct::to_binary(/* wherever you are putting the data */)
+/// ```
+/// The secret to this working nicely is its modularity.
+/// So long as all the data in a struct implements
+/// [ToBinary], you can just call [to_binary](ToBinary::to_binary)
+/// on its individual fields.
+/// ```
+/// # use abes_nice_things::ToBinary;
+/// # use std::io::Write;
+/// struct MyStruct {
+///     field1: String,
+///     field2: u8,
+/// }
+/// impl ToBinary for MyStruct {
+///     fn to_binary(&self, binary: &mut dyn Write) {
+///         self.field1.to_binary(binary);
+///         self.field2.to_binary(binary);
+///     }
+/// }
+/// ```
+/// Both [String] and [u8] both implement [ToBinary],
+/// meaning that we can just convert them to binary.
+/// We don't have to do anything special and just
+/// give them the binary without doing anything because
+/// I built these around [Read] and [Write], which
+/// will move the cursor as you read, meaning that it
+/// moves to the data correctly, so long as you [Read]
+/// and [Write] in the same order. Essentially, you
+/// need to [write](Write::write) fields in the same
+/// order you [read](Read::read) fields. In this case
+/// I [write](Write::write) field1, then field2.
+/// Because of this, I need to [read](Read::read) field1,
+/// then field2. If I don't then it would [read](Read::read)
+/// field1's bytes for field2 and vice versa, which would
+/// immediately corrupt your data.
+/// 
+/// # Enums
+/// While that may work for structs, enums are one
+/// of multiple things and we need to identify which
+/// variant is being used. I personally use [u8] to
+/// indicate which variant, but you could use anything
+/// so long as it is able to determine which
+/// variant you are using and you are using it
+/// in [FromBinary] to identify which variant
+/// was stored.
+/// ```
+/// # use abes_nice_things::ToBinary;
+/// # use std::io::Write;
+/// enum Example {
+///     Variant1,
+///     Variant2
+/// }
+/// impl ToBinary for Example {
+///     fn to_binary(&self, binary: &mut dyn Write) {
+///         match self {
+///             Example::Variant1 => 0_u8.to_binary(binary),
+///             Example::Variant2 => 1_u8.to_binary(binary)
+///                    // Notice this ^^^
+///         }
+///     }
+/// }
+/// ```
+/// Much like before, because [u8] implements [ToBinary],
+/// we can just convert it easily. Also, the underscore
+/// format that I used is (from what I've found), the
+/// easiest way to specify a number and its type.
+/// Notably, the number that you use for each variant
+/// is arbitrary, but must mirror what you use when converting
+/// [FromBinary]. In this case, if I messed it up, it would
+/// think that Variant1 is Variant2 and Variant2 is Variant1,
+/// which would immediately corrupt your data.
+/// 
+/// More complicated example:
+/// ```
+/// # use abes_nice_things::ToBinary;
+/// # use std::io::Write;
+/// enum Example<T: ToBinary> {
+///     EmptyVariant,
+///     TupleVariant(u8, T),
+///     StructVariant {
+///         field1: String,
+///         field2: Vec<T>
+///     }
+/// }
+/// impl<T: ToBinary> ToBinary for Example<T> {
+///     fn to_binary(&self, binary: &mut dyn Write) {
+///         match self {
+///             Example::EmptyVariant => 0_u8.to_binary(binary),
+///             Example::TupleVariant (field1, field2) => {
+///                 1_u8.to_binary(binary);
+///                 field1.to_binary(binary);
+///                 field2.to_binary(binary);
+///             }
+///             Example::StructVariant { field1, field2 } => {
+///                 2_u8.to_binary(binary);
+///                 field1.to_binary(binary);
+///                 field2.to_binary(binary);
+///             }
+///         }
+///     }
+/// }
+/// ```
+/// When implementing this, you must ALWAYS
+/// include something to indicate the variant being
+/// used. Aside from that, it is like a combination of
+/// how we did this for structs and how we did this for
+/// simple enums. As such, it follows similar rules.
+/// As said before, you need to show which variant is
+/// being used, but you also need the data in the 
+/// variants to be consistently ordered between the
+/// [to](ToBinary::to_binary) operation and the
+/// [from](FromBinary::from_binary) operation.
 pub trait ToBinary {
+    /// This method allows for easier conversion
+    /// to binary cheaply and simply.
+    /// 
+    /// The basic usage is:
+    /// ```ignore
+    /// data.to_binary(/* Where you want the data to go */)
+    /// ```
+    /// For more specific examples:
+    /// 
+    /// To [File](std::fs::File):
+    /// ```no_run
+    /// # use abes_nice_things::ToBinary;
+    /// # use std::io::Write;
+    /// # struct Data(());
+    /// # impl ToBinary for Data { fn to_binary(&self, binary: &mut dyn Write) {self.0.to_binary(binary)}}
+    /// # fn main() {
+    /// # let data = Data(());
+    /// data.to_binary(
+    ///     &mut std::fs::File::open("target_file").unwrap()
+    /// );
+    /// # }
+    /// ```
+    /// To [VecDeque](std::collections::VecDeque)
+    /// ```
+    /// # use abes_nice_things::ToBinary;
+    /// # use std::collections::VecDeque;
+    /// # fn main() {
+    /// # let data = "Controlling robots is my game";
+    /// let mut binary = VecDeque::new();
+    /// data.to_binary(&mut binary);
+    /// # }
+    /// ```
+    /// To [TcpStream](std::net::TcpStream)
+    /// ```ignore
+    /// data.to_binary(stream);
+    /// ```
+    /// As you can probably tell, anything that implements
+    /// [Write] is a valid binary for this method.
+    /// For more information/implementation instructions,
+    /// look at [trait level docs](ToBinary)
     fn to_binary(&self, binary: &mut dyn Write);
 }
 /// A convinience trait which is implemented for
