@@ -4,7 +4,7 @@ use crate::Either;
 /// By default, this allows conversions essentially
 /// being: [Option]\<T> -> [Option]\<U> or
 /// [Result]<T, E> -> [Result]<U, R>
-/// 
+///
 /// The main benefit here is that you don't need to
 /// take the value out of the type in order to convert it.
 /// Meaning that you don't need to handle the different paths
@@ -14,7 +14,7 @@ use crate::Either;
 /// If you make a type which contains others,
 /// it may be worth it to implement this for it
 /// if you expect it to be converted a lot.
-/// 
+///
 /// For example, let's say that we have a version
 /// of an [Option] which we are making for a library
 /// and want people to be able to convert it easily.
@@ -77,7 +77,7 @@ pub trait AsFrom<T> {
     ///```
     /// While in this case, with a infallible conversion inside an [Option],
     /// this is not removing that much complexity, it is still useful.
-    /// 
+    ///
     /// However, with a [Result], the complexity avoided is a bit worse.
     /// Instead of:
     ///```
@@ -113,7 +113,7 @@ impl<T: From<U>, U> AsFrom<Option<U>> for Option<T> {
     fn as_from(value: Option<U>) -> Self {
         match value {
             Some(value) => return Some(T::from(value)),
-            None => return None
+            None => return None,
         }
     }
 }
@@ -121,7 +121,7 @@ impl<T: From<U>, U, E: From<R>, R> AsFrom<Result<U, R>> for Result<T, E> {
     fn as_from(value: Result<U, R>) -> Self {
         match value {
             Ok(value) => return Ok(T::from(value)),
-            Err(error) => return Err(E::from(error))
+            Err(error) => return Err(E::from(error)),
         }
     }
 }
@@ -132,14 +132,15 @@ impl<T: From<U>, U, E: From<R>, R> AsFrom<Result<U, R>> for Result<T, E> {
 /// that the conversion will succeed.
 /// If it is a guarantee that it will succeed,
 /// you should just use [AsFrom].
-/// 
+///
 /// With that out of the way:
 /// # Example Implementation
 ///```
 /// //I haven't thought up an example yet
 ///```
 pub trait AsTryFrom<T>
-where Self: Sized
+where
+    Self: Sized,
 {
     type Error;
     fn as_try_from(value: T) -> Result<Self, Self::Error>;
@@ -148,34 +149,27 @@ impl<T: TryFrom<U>, U> AsTryFrom<Option<U>> for Option<T> {
     type Error = T::Error;
     fn as_try_from(value: Option<U>) -> Result<Self, Self::Error> {
         match value {
-            Some(value) => {
-                match T::try_from(value) {
-                    Ok(value) => return Ok(Some(value)),
-                    Err(error) => return Err(error)
-                }
-            }
+            Some(value) => match T::try_from(value) {
+                Ok(value) => return Ok(Some(value)),
+                Err(error) => return Err(error),
+            },
             // TODO: determine if this is correct or if it should panic
-            None => return Ok(None)
+            None => return Ok(None),
         }
     }
-    
 }
 impl<T: TryFrom<U>, U, E: TryFrom<R>, R> AsTryFrom<Result<U, R>> for Result<T, E> {
     type Error = Either<T::Error, E::Error>;
     fn as_try_from(value: Result<U, R>) -> Result<Self, Self::Error> {
         match value {
-            Ok(value) => {
-                match T::try_from(value) {
-                    Ok(value) => return Ok(Ok(value)),
-                    Err(fail) => return Err(Self::Error::new_t(fail))
-                }
-            }
-            Err(error) => {
-                match E::try_from(error) {
-                    Ok(error) => return Ok(Err(error)),
-                    Err(fail) => return Err(Self::Error::new_u(fail))
-                }
-            }
+            Ok(value) => match T::try_from(value) {
+                Ok(value) => return Ok(Ok(value)),
+                Err(fail) => return Err(Self::Error::new_t(fail)),
+            },
+            Err(error) => match E::try_from(error) {
+                Ok(error) => return Ok(Err(error)),
+                Err(fail) => return Err(Self::Error::new_u(fail)),
+            },
         }
     }
 }
@@ -186,7 +180,7 @@ impl<T: Into<U>, U> AsInto<Option<U>> for Option<T> {
     fn as_into(self) -> Option<U> {
         match self {
             Some(value) => return Some(value.into()),
-            None => return None
+            None => return None,
         }
     }
 }
@@ -194,7 +188,7 @@ impl<T: Into<U>, U, E: Into<R>, R> AsInto<Result<U, R>> for Result<T, E> {
     fn as_into(self) -> Result<U, R> {
         match self {
             Ok(value) => return Ok(value.into()),
-            Err(error) => return Err(error.into())
+            Err(error) => return Err(error.into()),
         }
     }
 }
@@ -206,14 +200,12 @@ impl<T: TryInto<U>, U> AsTryInto<Option<U>> for Option<T> {
     type Error = T::Error;
     fn as_try_into(self) -> Result<Option<U>, Self::Error> {
         match self {
-            Some(value) => {
-                match value.try_into() {
-                    Ok(value) => return Ok(Some(value)),
-                    Err(fail) => return Err(fail)
-                }
-            }
+            Some(value) => match value.try_into() {
+                Ok(value) => return Ok(Some(value)),
+                Err(fail) => return Err(fail),
+            },
             // TODO: find out if this is the correct behavior
-            None => return Ok(None)
+            None => return Ok(None),
         }
     }
 }
@@ -221,18 +213,14 @@ impl<T: TryInto<U>, U, E: TryInto<R>, R> AsTryInto<Result<U, R>> for Result<T, E
     type Error = Either<T::Error, E::Error>;
     fn as_try_into(self) -> Result<Result<U, R>, Self::Error> {
         match self {
-            Ok(value) => {
-                match value.try_into() {
-                    Ok(value) => return Ok(Ok(value)),
-                    Err(fail) => return Err(Self::Error::new_t(fail))
-                }
-            }
-            Err(error) => {
-                match error.try_into() {
-                    Ok(error) => return Ok(Err(error)),
-                    Err(fail) => return Err(Self::Error::new_u(fail))
-                }
-            }
+            Ok(value) => match value.try_into() {
+                Ok(value) => return Ok(Ok(value)),
+                Err(fail) => return Err(Self::Error::new_t(fail)),
+            },
+            Err(error) => match error.try_into() {
+                Ok(error) => return Ok(Err(error)),
+                Err(fail) => return Err(Self::Error::new_u(fail)),
+            },
         }
     }
 }

@@ -4,7 +4,7 @@
 pub mod as_from;
 pub use as_from::{AsFrom, AsInto, AsTryFrom, AsTryInto};
 pub mod from_binary;
-pub use from_binary::{FromBinary,ToBinary, Binary};
+pub use from_binary::{Binary, FromBinary, ToBinary};
 pub mod item;
 pub use item::Item;
 
@@ -13,23 +13,12 @@ use std::{
     sync::{Mutex, MutexGuard},
 };
 
-pub use abes_nice_procs::{FromBinary, ToBinary, method};
+pub use abes_nice_procs::{method, FromBinary, ToBinary};
 
 pub mod prelude {
     pub use crate::{
-        assert_pattern,
-        assert_pattern_ne,
-        debug,
-        debug_println,
-        input,
-        AsFrom,
-        AsInto,
-        AsTryFrom,
-        AsTryInto,
-        method,
-        FromBinary,
-        ToBinary,
-        Binary
+        assert_pattern, assert_pattern_ne, debug, debug_println, input, method, AsFrom, AsInto,
+        AsTryFrom, AsTryInto, Binary, FromBinary, ToBinary,
     };
 }
 /// A version of [println] that uses the same
@@ -40,6 +29,7 @@ pub mod prelude {
 /// #[cfg(debug_assertations)]
 /// println!(/*whatever you gave it*/)
 ///```
+/// For more information, see [println]
 #[macro_export]
 macro_rules! debug_println {
     () => {
@@ -82,7 +72,7 @@ macro_rules! assert_pattern_ne {
 /// A macro which will only run code
 /// when the crate is not compiled
 /// with '--release'
-/// 
+///
 /// It can be used with a block:
 ///```should_panic
 /// # use abes_nice_things::debug;
@@ -109,6 +99,7 @@ macro_rules! assert_pattern_ne {
 /// # use abes_nice_things::debug;
 /// debug!(println!("Yippy!"));
 /// //     ^^^^^ can only have one thing
+/// //        (note the lack of parenthesis)
 ///```
 #[macro_export]
 macro_rules! debug {
@@ -122,7 +113,7 @@ macro_rules! debug {
             $debug;
         }
     };
-} 
+}
 
 /// A version of [OnceLock](std::sync::OnceLock)
 /// which has the method used be determined at creation and consistent.
@@ -189,10 +180,7 @@ pub struct OnDrop<'a, T> {
 }
 impl<'a, T> OnDrop<'a, T> {
     pub fn new(method: &'a dyn Fn(&T), input: T) -> Self {
-        OnDrop {
-            method,
-            input
-        }
+        OnDrop { method, input }
     }
     pub fn set_input(&mut self, value: T) {
         self.input = value;
@@ -219,10 +207,7 @@ pub struct OnPanic<'a, T> {
 }
 impl<'a, T> OnPanic<'a, T> {
     pub fn new(method: &'a dyn Fn(&T), input: T) -> Self {
-        OnPanic {
-            method,
-            input
-        }
+        OnPanic { method, input }
     }
     /// Sets the input to the method and returns the previous value
     pub fn set_input(&mut self, input: T) -> T {
@@ -242,18 +227,7 @@ impl<'a, T> Drop for OnPanic<'a, T> {
         }
     }
 }
-/// This will NOT be faster than manually
-/// written out dimensions of [Vecs](Vec).
-/// The only advantage is that the number
-/// of dimensions is defined in a const generic.
-/// 
-/// This uses consistent side lengths. for example
-/// if you have a 3 dimensional [Vec], all the lengths
-/// in the x axis will be the same, which also applies to
-/// the y and z axes, but they do not need to have the same
-/// lengths as each other. So x could be 3 long, while
-/// z could be 5 long.
-use std::sync::mpsc::{Sender, Receiver, channel, SendError, RecvError};
+use std::sync::mpsc::{channel, Receiver, RecvError, SendError, Sender};
 pub struct Transceiver<T> {
     tx: Sender<T>,
     rx: Receiver<T>,
@@ -263,15 +237,9 @@ impl<T> Transceiver<T> {
         let (tx1, rx2) = channel::<T>();
         let (tx2, rx1) = channel::<T>();
         return (
-            Transceiver {
-                tx: tx1,
-                rx: rx1
-            },
-            Transceiver {
-                tx: tx2,
-                rx: rx2
-            }
-        )
+            Transceiver { tx: tx1, rx: rx1 },
+            Transceiver { tx: tx2, rx: rx2 },
+        );
     }
     pub fn send(&self, data: T) -> Result<(), SendError<T>> {
         self.tx.send(data)
@@ -286,7 +254,7 @@ impl<T> Transceiver<T> {
 }
 pub enum Either<T, U> {
     T(T),
-    U(U)
+    U(U),
 }
 impl<T, U> Either<T, U> {
     pub fn new_t(t: T) -> Self {
@@ -348,7 +316,7 @@ pub fn input_allow(allow: &[String]) -> String {
     loop {
         let input = input();
         if allow.contains(&input) {
-            return input
+            return input;
         }
     }
 }
@@ -357,7 +325,7 @@ pub fn input_allow_msg(allow: &[String], msg: &str) -> String {
         println!("{msg}");
         let input = input();
         if allow.contains(&input) {
-            return input
+            return input;
         }
     }
 }
@@ -367,10 +335,10 @@ pub fn input_yn(msg: &str) -> bool {
         println!("{msg}");
         value = input();
         if value == "y" {
-            return true
+            return true;
         }
         if value == "n" {
-            return false
+            return false;
         }
     }
 }
@@ -378,7 +346,7 @@ pub mod error {
     #[derive(Debug)]
     pub enum TransError<T> {
         Send(super::SendError<T>),
-        Recv(super::RecvError)
+        Recv(super::RecvError),
     }
     impl<T> From<super::SendError<T>> for TransError<T> {
         fn from(value: super::SendError<T>) -> Self {

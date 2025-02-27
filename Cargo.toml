@@ -13,3 +13,4 @@ abes_nice_procs = { git = "https://github.com/Course-Brains/abes_nice_procs.git"
 [features]
 default = []
 dyn_binary = []
+transmute_binary = []
