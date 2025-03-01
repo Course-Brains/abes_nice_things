@@ -1,5 +1,3 @@
-use crate::Either;
-
 /// A trait to convert things inside other types.
 /// By default, this allows conversions essentially
 /// being: [Option]\<T> -> [Option]\<U> or
@@ -132,17 +130,18 @@ impl<T: From<U>, U, E: From<R>, R> AsFrom<Result<U, R>> for Result<T, E> {
 /// that the conversion will succeed.
 /// If it is a guarantee that it will succeed,
 /// you should just use [AsFrom].
-///
-/// With that out of the way:
-/// # Example Implementation
-///```
-/// //I haven't thought up an example yet
-///```
+/// 
+/// For more information, see [AsFrom] and [TryFrom]
 pub trait AsTryFrom<T>
 where
     Self: Sized,
 {
     type Error;
+    /// This is a version of [AsFrom] which allows
+    /// for the conversion to return errors, much
+    /// like [TryFrom]. To be perfectly blunt, reading
+    /// their documentation should give you a good idea
+    /// on how to use this.
     fn as_try_from(value: T) -> Result<Self, Self::Error>;
 }
 impl<T: TryFrom<U>, U> AsTryFrom<Option<U>> for Option<T> {
@@ -173,54 +172,107 @@ impl<T: TryFrom<U>, U, E: TryFrom<R>, R> AsTryFrom<Result<U, R>> for Result<T, E
         }
     }
 }
+/// This is the sibling trait for
+/// [AsFrom], it is implemented
+/// automatically and should **NOT**
+/// be manually implemented.
+/// Instead, implement [AsFrom]
 pub trait AsInto<T> {
+    /// This is very similar to [Into].
+    /// However, much like [AsFrom], this
+    /// does its operation on the value inside
+    /// other types such as [Option] or [Result].
+    /// The best way to explain it is that it can
+    /// convert [Option<T>] to [Option<U>] and
+    /// [Result<T, E>] to [Result<U, R>] in a
+    /// concise way while still handling all
+    /// variant possiblilities properly.
+    /// Without this, in order to convert
+    /// [Option<T>] to [Option<U>], you would need
+    /// ```
+    /// fn into<T: Into<U>, U>(from: Option<T>) -> Option<U> {
+    ///     match from {
+    ///         Some(inner) => return Some(inner.into()),
+    ///         None => None
+    ///     }
+    /// }
+    /// ```
+    /// While that admittedly is not that complex,
+    /// it would be worse for [Result] and in both
+    /// cases, it would be better if you didn't have
+    /// to think about it.
+    ///
+    /// That is where [AsInto] comes in, it shortens
+    /// it from that to
+    /// ```ignore
+    /// fn into<T: Into<U>, U>(from: Option<T>) -> Option<U> {
+    ///     from.as_into()
+    /// }
+    /// ```
+    /// For more information, see [Into] and [AsFrom]
     fn as_into(self) -> T;
 }
-impl<T: Into<U>, U> AsInto<Option<U>> for Option<T> {
-    fn as_into(self) -> Option<U> {
-        match self {
-            Some(value) => return Some(value.into()),
-            None => return None,
-        }
+impl<T: AsFrom<U>, U> AsInto<T> for U {
+    fn as_into(self) -> T {
+        T::as_from(self)
     }
 }
-impl<T: Into<U>, U, E: Into<R>, R> AsInto<Result<U, R>> for Result<T, E> {
-    fn as_into(self) -> Result<U, R> {
-        match self {
-            Ok(value) => return Ok(value.into()),
-            Err(error) => return Err(error.into()),
-        }
-    }
-}
+/// This is the sibling trait for
+/// [AsTryFrom], it is implemented
+/// automatically and should **NOT**
+/// be manually implemented.
+/// Instead, implement [AsTryFrom]
 pub trait AsTryInto<T> {
     type Error;
+    /// This is similar to [AsTryFrom] and
+    /// [TryInto]. This is able to attempt
+    /// to convert the value inside another
+    /// type while allowing for error
+    /// returning if it fails.
+    /// Notably, if it does fail, it will
+    /// not return the error directly, because
+    /// there are two different possible error
+    /// types. Instead it will return [Either]
+    /// T's error type or U's error type.
+    /// The easiest way to extract the error from
+    /// that [Either] is a match statement.
+    ///
+    /// For more information, see [as_try_from](AsTryFrom::as_try_from)
+    /// and [try_into](TryInto::try_into)
     fn as_try_into(self) -> Result<T, Self::Error>;
 }
-impl<T: TryInto<U>, U> AsTryInto<Option<U>> for Option<T> {
+impl<T: AsTryFrom<U>, U> AsTryInto<T> for U {
     type Error = T::Error;
-    fn as_try_into(self) -> Result<Option<U>, Self::Error> {
-        match self {
-            Some(value) => match value.try_into() {
-                Ok(value) => return Ok(Some(value)),
-                Err(fail) => return Err(fail),
-            },
-            // TODO: find out if this is the correct behavior
-            None => return Ok(None),
-        }
+    fn as_try_into(self) -> Result<T, Self::Error> {
+        T::as_try_from(self)
     }
 }
-impl<T: TryInto<U>, U, E: TryInto<R>, R> AsTryInto<Result<U, R>> for Result<T, E> {
-    type Error = Either<T::Error, E::Error>;
-    fn as_try_into(self) -> Result<Result<U, R>, Self::Error> {
-        match self {
-            Ok(value) => match value.try_into() {
-                Ok(value) => return Ok(Ok(value)),
-                Err(fail) => return Err(Self::Error::new_t(fail)),
-            },
-            Err(error) => match error.try_into() {
-                Ok(error) => return Ok(Err(error)),
-                Err(fail) => return Err(Self::Error::new_u(fail)),
-            },
+/// This is a type that will either be T or U.
+/// That's it, it's pretty simple.
+/// Because there is no way to guarantee that
+/// the two types are not the same, it cannot
+/// implement [From] or [Into].
+pub enum Either<T, U> {
+    T(T),
+    U(U),
+}
+impl<T, U> Either<T, U> {
+    /// Creates a new instace of [Either]
+    /// with the T variant
+    pub fn new_t(t: T) -> Self {
+        Either::T(t)
+    }
+    /// Creates a new instance of [Either]
+    /// with the U variant
+    pub fn new_u(u: U) -> Self {
+        Either::U(u)
+    }
+}
+impl<T: From<Y>, U: From<I>, Y, I> AsFrom<Either<Y, I>> for Either<T, U> {
+    fn as_from(value: Either<Y, I>) -> Self {
+        match value {
+            Either::T(val) => Either::T(T::from(val)),
+            Either::U(val) => Either::U(U::from(val))
         }
     }
 }

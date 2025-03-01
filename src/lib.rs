@@ -1,18 +1,12 @@
 //! A collection of types, functions, traits, and macros which
 //! I found to be helpful and improve my experience while programming
 
-pub mod as_from;
-pub use as_from::{AsFrom, AsInto, AsTryFrom, AsTryInto};
-pub mod from_binary;
+mod as_from;
+pub use as_from::{AsFrom, AsInto, AsTryFrom, AsTryInto, Either};
+mod from_binary;
 pub use from_binary::{Binary, FromBinary, ToBinary};
-pub mod item;
-pub use item::Item;
 mod input;
 pub use input::Input;
-use std::{
-    io::stdin,
-    sync::{Mutex, MutexGuard},
-};
 
 pub use abes_nice_procs::{method, FromBinary, ToBinary};
 
@@ -22,7 +16,7 @@ pub mod prelude {
         AsTryFrom, AsTryInto, Binary, FromBinary, ToBinary,
     };
 }
-/// A version of [println] that uses the same{{{
+/// A version of [println] that uses the same
 /// input syntax but only prints when
 /// the crate is not compiled with '--release'
 /// it is essentially equivalent to
@@ -42,8 +36,16 @@ macro_rules! debug_println {
         println!("[DEBUG] {}", format_args!($($arg)*));
     }
 }
+/// A version of [assert] that uses
+/// patterns to determine if it has
+/// passed. Specifically, this takes
+/// in an identifier(variable type thing)
+/// then sees if it matches the pattern
+/// given. If it does, this does nothing.
+/// If it doesn't, then it will [panic]
+/// with the message you gave it.
 #[macro_export]
-macro_rules! assert_pattern {//{{{
+macro_rules! assert_pattern {
     ($item: ident, $pattern: pat_param) => {
         if let $pattern = $item {}
         else {
@@ -56,7 +58,12 @@ macro_rules! assert_pattern {//{{{
             panic!("{}", format_args!($($arg)*));
         }
     };
-}//}}}
+}
+/// A version of [assert_ne] that
+/// uses pattern matching to determine
+/// whether or not to [panic].
+/// 
+/// For more information, see [assert_pattern]
 #[macro_export]
 macro_rules! assert_pattern_ne {
     ($item: ident, $pattern: pat_param) => {
@@ -114,209 +121,4 @@ macro_rules! debug {
             $debug;
         }
     };
-}
-/// A version of [OnceLock](std::sync::OnceLock)
-/// which has the method used be determined at creation and consistent.
-/// Main benefit is that you won't have to type out the method multiple
-/// times and risk mistakes.
-pub struct OnceLockMethod<'a, T> {
-    inner: Mutex<Option<T>>,
-    method: &'a (dyn Fn() -> T + Sync),
-}
-impl<'a, T> OnceLockMethod<'a, T> {
-    /// Creates the instance, but does NOT
-    /// initialize the data.
-    pub const fn new(method: &'a (impl Fn() -> T + Sync)) -> OnceLockMethod<'a, T> {
-        return OnceLockMethod {
-            inner: Mutex::new(None),
-            method,
-        };
-    }
-    /// Runs the method to set the data
-    /// even if it already has been set.
-    /// Also, this is blocking.
-    pub fn init(&self) {
-        *self.inner.lock().unwrap() = Some((self.method)());
-    }
-    /// Gets the data,
-    /// or if there is no data yet,
-    /// returns None.
-    pub fn get(&self) -> MutexGuard<'_, Option<T>> {
-        return self.inner.lock().unwrap();
-    }
-    /// If it has not already been initalized,
-    /// it creates the data.
-    /// Then it gets the data.
-    /// This is also blocking.
-    pub fn get_or_init(&self) -> MutexGuard<'_, Option<T>> {
-        if self.is_uninit() {
-            self.init();
-        }
-        return self.get();
-    }
-    /// returns whether or not this has been initialized.
-    pub fn is_init(&self) -> bool {
-        if self.inner.lock().unwrap().is_some() {
-            return true;
-        }
-        return false;
-    }
-    /// returns if this has NOT been initialized.
-    pub fn is_uninit(&self) -> bool {
-        if self.inner.lock().unwrap().is_none() {
-            return true;
-        }
-        return false;
-    }
-    /// Sets the data to something no matter what
-    /// its state was before.
-    pub unsafe fn set(&self, value: T) {
-        *self.inner.lock().unwrap() = Some(value)
-    }
-}
-pub struct OnDrop<'a, T> {
-    method: &'a dyn Fn(&T),
-    input: T,
-}
-impl<'a, T> OnDrop<'a, T> {
-    pub fn new(method: &'a dyn Fn(&T), input: T) -> Self {
-        OnDrop { method, input }
-    }
-    pub fn set_input(&mut self, value: T) {
-        self.input = value;
-    }
-}
-impl<'a, T> Drop for OnDrop<'a, T> {
-    fn drop(&mut self) {
-        let input = &self.input;
-        (self.method)(input)
-    }
-}
-/// A type to run code when the thread panics.{{{
-/// In order to actually run the code,
-/// the instance of this must exist when the thread panics.
-/// aka. it needs to not have been dropped.
-/// To make that easier, I suggest you put it in
-/// the main section of your thread, or put it in main.
-/// However, you can also put it in a function to handle panics
-/// specifically inside that function.
-/// Or you can drop it to remove it when you no longer need it.}}}
-pub struct OnPanic<'a, T> {
-    method: &'a dyn Fn(&T),
-    input: T,
-}
-impl<'a, T> OnPanic<'a, T> {
-    pub fn new(method: &'a dyn Fn(&T), input: T) -> Self {
-        OnPanic { method, input }
-    }
-    /// Sets the input to the method and returns the previous value
-    pub fn set_input(&mut self, input: T) -> T {
-        std::mem::replace(&mut self.input, input)
-    }
-    pub fn get_input(&self) -> &T {
-        &self.input
-    }
-    pub fn set_method(&mut self, method: &'a dyn Fn(&T)) {
-        self.method = method;
-    }
-}
-impl<'a, T> Drop for OnPanic<'a, T> {
-    fn drop(&mut self) {
-        if std::thread::panicking() {
-            (self.method)(&self.input)
-        }
-    }
-}
-pub enum Either<T, U> {
-    T(T),
-    U(U),
-}
-impl<T, U> Either<T, U> {
-    pub fn new_t(t: T) -> Self {
-        Either::T(t)
-    }
-    pub fn new_u(u: U) -> Self {
-        Either::U(u)
-    }
-}
-/// Gets input from the terminal
-/// and returns it as a [String].
-/// Specifically, it will block the
-/// current [thread](std::thread::Thread)
-/// until the user presses enter in the
-/// terminal and then returns what they
-/// typed before they pressed enter
-/// (meaning the new-line itself is
-/// excluded).
-/// ```no_run
-/// # use abes_nice_things::input();
-/// # fn main() {
-/// match input().as_str() {
-///     "Hello" => println!("World"),
-///     "foo" => println!("bar"),
-///     _ => println!("OH NO")
-/// }
-/// # }
-/// ```
-pub fn input() -> String {
-    let mut string: String = String::new();
-    stdin().read_line(&mut string).unwrap();
-    if let Some('\n') = string.chars().next_back() {
-        string.pop();
-    } else if let Some('\r') = string.chars().next_back() {
-        string.pop();
-    }
-    string
-}
-/// Runs the condition after getting [input]
-/// from the terminal. If nothing goes wrong,
-/// return either [Ok] with the contained
-/// [boolean] being whether or not the inputted
-/// [String] should be returned.
-/// However, if something does go wrong,
-/// you can return your set error type by
-/// having the condition return an [Err]
-/// containing the error itsefl.
-pub fn input_cond<E>(cond: impl Fn(&String) -> Result<bool, E>) -> Result<String, E> {
-    loop {
-        let input = input();
-        match cond(&input) {
-            Ok(value) => {
-                if value {
-                    return Ok(input);
-                }
-            }
-            Err(error) => return Err(error),
-        }
-    }
-}
-pub fn input_yn(msg: &str) -> bool {
-    let mut value;
-    loop {
-        println!("{msg}");
-        value = input();
-        if value == "y" {
-            return true;
-        }
-        if value == "n" {
-            return false;
-        }
-    }
-}
-pub mod error {
-    #[derive(Debug)]
-    pub enum TransError<T> {
-        Send(super::SendError<T>),
-        Recv(super::RecvError),
-    }
-    impl<T> From<super::SendError<T>> for TransError<T> {
-        fn from(value: super::SendError<T>) -> Self {
-            TransError::Send(value)
-        }
-    }
-    impl<T> From<super::RecvError> for TransError<T> {
-        fn from(value: super::RecvError) -> Self {
-            TransError::Recv(value)
-        }
-    }
 }

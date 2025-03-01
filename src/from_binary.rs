@@ -1362,13 +1362,15 @@ mod tests {
         num_helper!(u32, u32,);
         num_helper!(u64, u64,);
         num_helper!(u128, u128,);
+        #[cfg(feature = "dyn_binary")]
         num_helper!(usize, usize_dyn_binary,);
         num_helper!(i8, i8,);
         num_helper!(i16, i16,);
         num_helper!(i32, i32,);
         num_helper!(i64, i64,);
         num_helper!(i128, i128,);
-        num_helper!(isize, isize_dyn_binary);
+        #[cfg(feature = "dyn_binary")]
+        num_helper!(isize, isize_dyn_binary,);
     }
     mod bool {
         use super::{FromBinary, ToBinary, VecDeque};

@@ -6,7 +6,7 @@ use std::convert::Infallible;
 /// ```no_run
 /// # use abes_nice_things::Input;
 /// # fn main() {
-/// let input: String = Input::new().get().unwrap();
+/// let input: String = <Input>::new().get().unwrap();
 /// # }
 /// ```
 /// As you may have noticed, we need to [unwrap](Result::unwrap)
@@ -28,7 +28,7 @@ use std::convert::Infallible;
 /// ```
 /// # use abes_nice_things::Input;
 /// # fn main() {
-/// Input::new().msg("Whatever you want");
+/// <Input>::new().msg("Whatever you want");
 /// # }
 /// ```
 /// Notably, if no message is provided,
@@ -75,8 +75,8 @@ use std::convert::Infallible;
 /// ```
 /// # use abes_nice_things::Input;
 /// # fn main() {
-/// Input::new().cond(& |string| {
-///     match string.as_str().to_lowercase() {
+/// <Input>::new().cond(& |string| {
+///     match string.to_lowercase().as_str() {
 ///         "y"|"n" => return Ok(true),
 ///         _ => return Ok(false)
 ///     }
@@ -88,7 +88,7 @@ use std::convert::Infallible;
 /// ```no_run
 /// # use abes_nice_things::Input;
 /// # fn main() {
-/// let input: String = Input::new()
+/// let input: String = <Input>::new()
 ///     .msg("some message")
 ///     .cond(&|string| {
 ///         // Some condition
@@ -115,7 +115,7 @@ impl<'a, E> Input<'a, E> {
     /// ```no_run
     /// # use abes_nice_things::Input;
     /// # fn main() {
-    /// let input: String = Input::new().get().unwrap();
+    /// let input: String = <Input>::new().get().unwrap();
     /// # }
     /// ```
     /// Notably, the [String] will be returned *without*
@@ -189,7 +189,7 @@ impl<'a, E> Input<'a, E> {
     /// ```
     /// # use abes_nice_things::Input;
     /// # fn main() {
-    /// Input::new().msg("Something idk").get().unwrap();
+    /// <Input>::new().msg("Something idk").get().unwrap();
     /// # }
     /// ```
     /// will cause the following in the terminal
@@ -233,17 +233,17 @@ impl<'a, E> Input<'a, E> {
     /// For example, the condition used
     /// by [yn](Input::yn) to enforce only y or n being
     /// returned could be done as shown
-    /// ```
+    /// ```no_run
     /// # use abes_nice_things::Input;
     /// # fn main() {
-    /// let input: String = Input::new()
+    /// let input: String = <Input>::new()
     ///     .cond(&|string| {
-    ///         match string {
+    ///         match string.as_str() {
     ///             "y"|"n" => return Ok(true),
     ///             _ => return Ok(false)
     ///         }
     ///     })
-    ///     .get().unwrap()
+    ///     .get().unwrap();
     /// # }
     /// ```
     /// Notably, [Ok] is returned no matter what in this
