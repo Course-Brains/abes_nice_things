@@ -36,7 +36,7 @@ use std::convert::Infallible;
 /// cause a newline to be [printed](println),
 /// meaning that it will not cause a gap such as
 /// ```terminal
-/// 
+///
 /// [where you type]
 /// ```
 /// to occur.
@@ -45,7 +45,7 @@ use std::convert::Infallible;
 /// sometimes you need to restrict the possible
 /// responses or sometimes getting the input
 /// itself can fai to meet your conditions.
-/// To allow this to happen, you can give a 
+/// To allow this to happen, you can give a
 /// closure that will be run with the [String]
 /// given by the user as an input.
 /// This closure must return either [Ok] containing
@@ -104,7 +104,7 @@ use std::convert::Infallible;
 /// error type is [Infallible].
 pub struct Input<'a, E = Infallible> {
     msg: Option<&'a str>,
-    cond: Option<&'a dyn Fn(&String) -> Result<bool, E>>
+    cond: Option<&'a dyn Fn(&String) -> Result<bool, E>>,
 }
 impl<'a, E> Input<'a, E> {
     /// This gets input from the terminal using the
@@ -131,7 +131,7 @@ impl<'a, E> Input<'a, E> {
 
             let mut string: String = String::new();
             std::io::stdin().read_line(&mut string).unwrap();
-            if let Some('\n'|'\r') = string.chars().next_back() {
+            if let Some('\n' | '\r') = string.chars().next_back() {
                 string.pop();
             }
 
@@ -139,13 +139,12 @@ impl<'a, E> Input<'a, E> {
                 Some(cond) => {
                     if cond(&string)? {
                         string
-                    }
-                    else {
-                        continue
+                    } else {
+                        continue;
                     }
                 }
-                None => string
-            })
+                None => string,
+            });
         }
     }
     /// This creates an instance of [Input]
@@ -155,7 +154,9 @@ impl<'a, E> Input<'a, E> {
     /// For more information see the type level
     /// [documentation](Input)
     pub fn new() -> Self {
-        Self { ..Default::default() }
+        Self {
+            ..Default::default()
+        }
     }
     /// This creates an instance of [Input]
     /// with settings of no message, and
@@ -167,11 +168,9 @@ impl<'a, E> Input<'a, E> {
     /// [documentation](Input)
     pub fn yn() -> Self {
         Self {
-            cond: Some(&|string: &String| {
-                match string.as_str() {
-                    "y"|"n" => return Ok(true),
-                    _ => return Ok(false)
-                }
+            cond: Some(&|string: &String| match string.as_str() {
+                "y" | "n" => Ok(true),
+                _ => Ok(false),
             }),
             ..Default::default()
         }
@@ -272,7 +271,7 @@ impl<'a, E> Input<'a, E> {
         self
     }
 }
-impl<'a, E> Default for Input<'a, E> {
+impl<E> Default for Input<'_, E> {
     fn default() -> Self {
         Self {
             msg: None,

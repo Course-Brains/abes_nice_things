@@ -1,15 +1,15 @@
 use std::io::{Read, Write};
+#[cfg(feature = "transmute_binary")]
+use std::mem::transmute;
 use std::ops::Deref;
 #[cfg(feature = "transmute_binary")]
 use transmuters::*;
-#[cfg(feature = "transmute_binary")]
-use std::mem::transmute;
 /// This trait is designed to allow for easier conversion from binary
 /// in a defined and consistent way.
 /// It contains a singular method([from_binary](FromBinary::from_binary))
 /// and is designed exlusively to convert data from binary.
 /// For more information on usage, see [from_binary](FromBinary::from_binary).
-/// 
+///
 /// # Implementation
 /// This is designed to be as easily expandable as possible.
 /// A large part of that is due to the method taking a [Reader](Read).
@@ -84,7 +84,7 @@ use std::mem::transmute;
 /// the only thing that matters is that it is able to
 /// determine which is being used, and you do the opposite
 /// in order to convert [to binary](ToBinary::to_binary).
-/// 
+///
 /// While this works for some enums, it does not work if
 /// they have data in their variants. The way we get around
 /// that is by just by converting all their data [to binary](ToBinary::to_binary).
@@ -129,7 +129,7 @@ pub trait FromBinary {
     /// This method allows for easier converson
     /// from binary while staying safe
     /// (assuming you are converting what you think you are).
-    /// 
+    ///
     /// Specifically, it takes in something that implements [Read]
     /// and returns the data type you want.
     /// # Examples
@@ -203,7 +203,7 @@ pub trait FromBinary {
     /// takes in anything that implements [Read],
     /// So long as your data source implements [Read],
     /// no extra code has to be written.
-    /// 
+    ///
     /// For more infomation see the [trait docs](FromBinary)
     fn from_binary(binary: &mut dyn Read) -> Self;
 }
@@ -246,7 +246,7 @@ pub trait FromBinary {
 /// then field2. If I don't then it would [read](Read::read)
 /// field1's bytes for field2 and vice versa, which would
 /// immediately corrupt your data.
-/// 
+///
 /// # Enums
 /// While that may work for structs, enums are one
 /// of multiple things and we need to identify which
@@ -282,7 +282,7 @@ pub trait FromBinary {
 /// [FromBinary]. In this case, if I messed it up, it would
 /// think that Variant1 is Variant2 and Variant2 is Variant1,
 /// which would immediately corrupt your data.
-/// 
+///
 /// More complicated example:
 /// ```
 /// # use abes_nice_things::ToBinary;
@@ -319,20 +319,20 @@ pub trait FromBinary {
 /// how we did this for structs and how we did this for
 /// simple enums. As such, it follows similar rules.
 /// As said before, you need to show which variant is
-/// being used, but you also need the data in the 
+/// being used, but you also need the data in the
 /// variants to be consistently ordered between the
 /// [to](ToBinary::to_binary) operation and the
 /// [from](FromBinary::from_binary) operation.
 pub trait ToBinary {
     /// This method allows for easier conversion
     /// to binary cheaply and simply.
-    /// 
+    ///
     /// The basic usage is:
     /// ```ignore
     /// data.to_binary(/* Where you want the data to go */)
     /// ```
     /// For more specific examples:
-    /// 
+    ///
     /// To [File](std::fs::File):
     /// ```no_run
     /// # use abes_nice_things::ToBinary;
@@ -377,7 +377,11 @@ pub trait ToBinary {
 /// ```ignore
 /// impl<T: Binary> Thingamajig { ... }
 /// ```
-pub trait Binary where Self: FromBinary + ToBinary {}
+pub trait Binary
+where
+    Self: FromBinary + ToBinary,
+{
+}
 impl<T: FromBinary + ToBinary> Binary for T {}
 macro_rules! num_helper {
     ($($type: ty)*) => {
@@ -432,7 +436,7 @@ macro_rules! vec_helper {
                 item.to_binary(binary)
             }
         }
-    }
+    };
 }
 impl FromBinary for std::primitive::char {
     fn from_binary(binary: &mut dyn Read) -> Self {
@@ -449,12 +453,8 @@ impl FromBinary for bool {
         let mut buf: [u8; 1] = [0];
         binary.read_exact(&mut buf).unwrap();
         match buf[0] {
-            0b0000_0000 => {
-                false
-            }
-            0b0000_0001 => {
-                true
-            }
+            0b0000_0000 => false,
+            0b0000_0001 => true,
             _ => {
                 panic!("Expected bool byte but found: {}", buf[0])
             }
@@ -464,12 +464,8 @@ impl FromBinary for bool {
 impl ToBinary for bool {
     fn to_binary(&self, binary: &mut dyn Write) {
         match self {
-            true => {
-                binary.write_all(&[0b0000_0001]).unwrap()
-            }
-            false => {
-                binary.write_all(&[0b0000_0000]).unwrap()
-            }
+            true => binary.write_all(&[0b0000_0001]).unwrap(),
+            false => binary.write_all(&[0b0000_0000]).unwrap(),
         }
     }
 }
@@ -499,7 +495,7 @@ impl<T: FromBinary> FromBinary for Vec<T> {
         for _ in 0..len {
             out.push(T::from_binary(binary));
         }
-        return out
+        out
     }
 }
 impl<T: ToBinary> ToBinary for Vec<T> {
@@ -526,22 +522,21 @@ impl<T: ToBinary> ToBinary for std::collections::LinkedList<T> {
     // I get that no one cares about linked lists but still
     vec_helper!();
 }
-impl<T: FromBinary + std::hash::Hash + Eq, S: FromBinary + std::hash::BuildHasher> FromBinary for std::collections::HashSet<T, S> {
+impl<T: FromBinary + std::hash::Hash + Eq, S: FromBinary + std::hash::BuildHasher> FromBinary
+    for std::collections::HashSet<T, S>
+{
     fn from_binary(binary: &mut dyn Read) -> Self {
         // Can't just use the Vec implementation for this
         // Format:
-            // capacity: usize/u32
-            // state
-            // values
+        // capacity: usize/u32
+        // state
+        // values
         let cap = usize::from_binary(binary);
-        let mut out = Self::with_capacity_and_hasher(
-            cap,
-            S::from_binary(binary)
-        );
+        let mut out = Self::with_capacity_and_hasher(cap, S::from_binary(binary));
         for _ in 0..cap {
             out.insert(T::from_binary(binary));
         }
-        return out
+        out
     }
 }
 impl<T: ToBinary, S: ToBinary> ToBinary for std::collections::HashSet<T, S> {
@@ -558,9 +553,7 @@ impl<T: ToBinary, S: ToBinary> ToBinary for std::collections::HashSet<T, S> {
 #[cfg(feature = "transmute_binary")]
 impl FromBinary for std::hash::RandomState {
     fn from_binary(binary: &mut dyn Read) -> Self {
-        unsafe {
-            transmute::<RandomState, Self>(RandomState::from_binary(binary))
-        }
+        unsafe { transmute::<RandomState, Self>(RandomState::from_binary(binary)) }
     }
 }
 #[cfg(feature = "transmute_binary")]
@@ -571,21 +564,23 @@ impl ToBinary for std::hash::RandomState {
         }
     }
 }
-impl<K: FromBinary + Eq + std::hash::Hash, V: FromBinary, S: FromBinary + std::hash::BuildHasher> FromBinary for std::collections::HashMap<K, V, S> {
+impl<
+        K: FromBinary + Eq + std::hash::Hash,
+        V: FromBinary,
+        S: FromBinary + std::hash::BuildHasher,
+    > FromBinary for std::collections::HashMap<K, V, S>
+{
     // layout:
-        // cap: usize/u32
-        // hasher: S
-        // data: [(K, V)]
+    // cap: usize/u32
+    // hasher: S
+    // data: [(K, V)]
     fn from_binary(binary: &mut dyn Read) -> Self {
         let cap = usize::from_binary(binary);
-        let mut out = Self::with_capacity_and_hasher(
-            cap,
-            S::from_binary(binary)
-        );
+        let mut out = Self::with_capacity_and_hasher(cap, S::from_binary(binary));
         for _ in 0..cap {
             out.insert(K::from_binary(binary), V::from_binary(binary));
         }
-        return out
+        out
     }
 }
 impl<K: ToBinary, V: ToBinary, S: ToBinary> ToBinary for std::collections::HashMap<K, V, S> {
@@ -629,10 +624,8 @@ impl<K: ToBinary, V: ToBinary> ToBinary for std::collections::BTreeMap<K, V> {
 }
 impl FromBinary for std::alloc::Layout {
     fn from_binary(binary: &mut dyn Read) -> Self {
-        Self::from_size_align(
-            usize::from_binary(binary),
-            usize::from_binary(binary)
-        ).expect("Invalid binary")
+        Self::from_size_align(usize::from_binary(binary), usize::from_binary(binary))
+            .expect("Invalid binary")
     }
 }
 impl ToBinary for std::alloc::Layout {
@@ -645,9 +638,7 @@ impl ToBinary for std::alloc::Layout {
 impl FromBinary for std::alloc::LayoutError {
     // Contains no data so nothing is read
     fn from_binary(_binary: &mut dyn Read) -> Self {
-        unsafe {
-            transmute(())
-        }
+        unsafe { transmute(()) }
     }
 }
 impl ToBinary for std::alloc::LayoutError {
@@ -657,23 +648,21 @@ impl ToBinary for std::alloc::LayoutError {
 #[cfg(feature = "transmute_binary")]
 impl FromBinary for std::array::TryFromSliceError {
     fn from_binary(_binary: &mut dyn Read) -> Self {
-        unsafe {
-            transmute(())
-        }
+        unsafe { transmute(()) }
     }
 }
 impl ToBinary for std::array::TryFromSliceError {
-    fn to_binary(&self, _binary: &mut dyn Write) {
-        
-    }
+    fn to_binary(&self, _binary: &mut dyn Write) {}
 }
 impl<T: FromBinary> FromBinary for Option<T> {
     fn from_binary(binary: &mut dyn Read) -> Self {
         match bool::from_binary(binary) {
-            true => {// Some(T)
+            true => {
+                // Some(T)
                 Some(T::from_binary(binary))
             }
-            false => {// None
+            false => {
+                // None
                 None
             }
         }
@@ -686,9 +675,7 @@ impl<T: ToBinary> ToBinary for Option<&T> {
                 true.to_binary(binary);
                 value.to_binary(binary);
             }
-            None => {
-                false.to_binary(binary)
-            }
+            None => false.to_binary(binary),
         }
     }
 }
@@ -697,7 +684,7 @@ impl<T: FromBinary, E: FromBinary> FromBinary for Result<T, E> {
         match u8::from_binary(binary) {
             0 => Ok(T::from_binary(binary)),
             1 => Err(E::from_binary(binary)),
-            _ => unreachable!("Zoinks! It's the gay blade!")
+            _ => unreachable!("Zoinks! It's the gay blade!"),
         }
     }
 }
@@ -716,19 +703,14 @@ impl<T: ToBinary, E: ToBinary> ToBinary for Result<T, E> {
     }
 }
 impl FromBinary for () {
-    fn from_binary(_binary: &mut dyn Read) -> Self {
-        ()
-    }
+    fn from_binary(_binary: &mut dyn Read) -> Self {}
 }
 impl ToBinary for () {
     fn to_binary(&self, _binary: &mut dyn Write) {}
 }
 impl<T: FromBinary, U: FromBinary> FromBinary for (T, U) {
     fn from_binary(binary: &mut dyn Read) -> Self {
-        (
-            T::from_binary(binary),
-            U::from_binary(binary),
-        )
+        (T::from_binary(binary), U::from_binary(binary))
     }
 }
 impl<T: ToBinary, U: ToBinary> ToBinary for (&T, &U) {
@@ -742,7 +724,7 @@ impl<T: FromBinary, U: FromBinary, I: FromBinary> FromBinary for (T, U, I) {
         (
             T::from_binary(binary),
             U::from_binary(binary),
-            I::from_binary(binary)
+            I::from_binary(binary),
         )
     }
 }
@@ -759,7 +741,7 @@ impl<T: FromBinary, U: FromBinary, I: FromBinary, O: FromBinary> FromBinary for 
             T::from_binary(binary),
             U::from_binary(binary),
             I::from_binary(binary),
-            O::from_binary(binary)
+            O::from_binary(binary),
         )
     }
 }
@@ -777,12 +759,12 @@ impl<T: FromBinary, const N: usize> FromBinary for [T; N] {
         for index in 0..N {
             out[index] = Some(T::from_binary(binary))
         }
-        return out.map(|x| x.unwrap())
+        out.map(|x| x.unwrap())
     }
 }
 impl<T: ToBinary, const N: usize> ToBinary for [T; N] {
     fn to_binary(&self, binary: &mut dyn Write) {
-        for value in self.into_iter() {
+        for value in self.iter() {
             value.to_binary(binary);
         }
     }
@@ -793,7 +775,7 @@ impl FromBinary for std::cmp::Ordering {
             0 => std::cmp::Ordering::Equal,
             1 => std::cmp::Ordering::Less,
             2 => std::cmp::Ordering::Greater,
-            _ => unreachable!("RUH ROH RAGGY")
+            _ => unreachable!("RUH ROH RAGGY"),
         }
     }
 }
@@ -802,7 +784,7 @@ impl ToBinary for std::cmp::Ordering {
         match self {
             std::cmp::Ordering::Equal => 0_u8.to_binary(binary),
             std::cmp::Ordering::Less => 1_u8.to_binary(binary),
-            std::cmp::Ordering::Greater => 2_u8.to_binary(binary)
+            std::cmp::Ordering::Greater => 2_u8.to_binary(binary),
         }
     }
 }
@@ -841,7 +823,7 @@ impl FromBinary for std::net::IpAddr {
         match u8::from_binary(binary) {
             0 => std::net::IpAddr::V4(std::net::Ipv4Addr::from_binary(binary)),
             1 => std::net::IpAddr::V6(std::net::Ipv6Addr::from_binary(binary)),
-            _ => unreachable!("AW NAWR")
+            _ => unreachable!("AW NAWR"),
         }
     }
 }
@@ -863,7 +845,7 @@ impl FromBinary for std::net::SocketAddrV4 {
     fn from_binary(binary: &mut dyn Read) -> Self {
         Self::new(
             std::net::Ipv4Addr::from_binary(binary),
-            u16::from_binary(binary)
+            u16::from_binary(binary),
         )
     }
 }
@@ -879,7 +861,7 @@ impl FromBinary for std::net::SocketAddrV6 {
             std::net::Ipv6Addr::from_binary(binary),
             u16::from_binary(binary),
             u32::from_binary(binary),
-            u32::from_binary(binary)
+            u32::from_binary(binary),
         )
     }
 }
@@ -896,7 +878,7 @@ impl FromBinary for std::net::SocketAddr {
         match u8::from_binary(binary) {
             0 => std::net::SocketAddr::V4(std::net::SocketAddrV4::from_binary(binary)),
             1 => std::net::SocketAddr::V6(std::net::SocketAddrV6::from_binary(binary)),
-            _ => unreachable!("Zoinks!")
+            _ => unreachable!("Zoinks!"),
         }
     }
 }
@@ -920,7 +902,7 @@ impl<T: FromBinary> FromBinary for std::ops::Bound<T> {
             0 => std::ops::Bound::Excluded(T::from_binary(binary)),
             1 => std::ops::Bound::Included(T::from_binary(binary)),
             2 => std::ops::Bound::Unbounded,
-            _ => unreachable!("Let's split up, gang!")
+            _ => unreachable!("Let's split up, gang!"),
         }
     }
 }
@@ -935,7 +917,7 @@ impl<T: ToBinary> ToBinary for std::ops::Bound<T> {
                 1_u8.to_binary(binary);
                 point.to_binary(binary)
             }
-            std::ops::Bound::Unbounded => 2_u8.to_binary(binary)
+            std::ops::Bound::Unbounded => 2_u8.to_binary(binary),
         }
     }
 }
@@ -994,41 +976,30 @@ impl<T: ToBinary> ToBinary for std::ops::RangeToInclusive<T> {
 #[cfg(feature = "transmute_binary")]
 impl FromBinary for std::time::Instant {
     fn from_binary(binary: &mut dyn Read) -> Self {
-        unsafe {
-            transmute(Instant::from_binary(binary))
-        }
+        unsafe { transmute(Instant::from_binary(binary)) }
     }
 }
 #[cfg(feature = "transmute_binary")]
 impl ToBinary for std::time::Instant {
     fn to_binary(&self, binary: &mut dyn Write) {
-        unsafe {
-            transmute::<Self, Instant>(*self).to_binary(binary)
-        }
+        unsafe { transmute::<Self, Instant>(*self).to_binary(binary) }
     }
 }
 #[cfg(feature = "transmute_binary")]
 impl FromBinary for std::time::SystemTime {
     fn from_binary(binary: &mut dyn Read) -> Self {
-        unsafe {
-            transmute(Instant::from_binary(binary))
-        }
+        unsafe { transmute(Instant::from_binary(binary)) }
     }
 }
 #[cfg(feature = "transmute_binary")]
 impl ToBinary for std::time::SystemTime {
     fn to_binary(&self, binary: &mut dyn Write) {
-        unsafe {
-            transmute::<Self, Instant>(*self).to_binary(binary)
-        }
+        unsafe { transmute::<Self, Instant>(*self).to_binary(binary) }
     }
 }
 impl FromBinary for std::time::Duration {
     fn from_binary(binary: &mut dyn Read) -> Self {
-        Self::new(
-            u64::from_binary(binary),
-            u32::from_binary(binary)
-        )
+        Self::new(u64::from_binary(binary), u32::from_binary(binary))
     }
 }
 impl ToBinary for std::time::Duration {
@@ -1067,7 +1038,7 @@ impl<T: ToBinary> ToBinary for std::cell::Cell<T> {
         // It is safe actually because we never mutate the anything,
         // meaning that it is essentially the same as just &T
         unsafe {
-            (&*self.as_ptr()).to_binary(binary);
+            (*self.as_ptr()).to_binary(binary);
         }
     }
 }
@@ -1075,7 +1046,7 @@ impl<T: FromBinary> FromBinary for std::cell::OnceCell<T> {
     fn from_binary(binary: &mut dyn Read) -> Self {
         match Option::<T>::from_binary(binary) {
             Some(data) => Self::from(data),
-            None => Self::new()
+            None => Self::new(),
         }
     }
 }
@@ -1091,9 +1062,7 @@ impl<T: FromBinary> FromBinary for std::cell::UnsafeCell<T> {
 }
 impl<T: ToBinary> ToBinary for std::cell::UnsafeCell<T> {
     fn to_binary(&self, binary: &mut dyn Write) {
-        unsafe {
-            (&*self.get()).to_binary(binary)
-        }
+        unsafe { (*self.get()).to_binary(binary) }
     }
 }
 impl FromBinary for std::ffi::CString {
@@ -1142,7 +1111,7 @@ impl<B: FromBinary, C: FromBinary> FromBinary for std::ops::ControlFlow<B, C> {
         match u8::from_binary(binary) {
             0 => Self::Break(B::from_binary(binary)),
             1 => Self::Continue(C::from_binary(binary)),
-            _ => unreachable!("Professor Bug, that is my name")
+            _ => unreachable!("Professor Bug, that is my name"),
         }
     }
 }
@@ -1206,17 +1175,13 @@ impl ToBinary for std::process::ExitCode {
 #[cfg(feature = "transmute_binary")]
 impl FromBinary for std::process::ExitStatus {
     fn from_binary(binary: &mut dyn Read) -> Self {
-        unsafe {
-            transmute(i32::from_binary(binary))
-        }
+        unsafe { transmute(i32::from_binary(binary)) }
     }
 }
 #[cfg(feature = "transmute_binary")]
 impl ToBinary for std::process::ExitStatus {
     fn to_binary(&self, binary: &mut dyn Write) {
-        unsafe {
-            transmute::<Self, i32>(*self).to_binary(binary)
-        }
+        unsafe { transmute::<Self, i32>(*self).to_binary(binary) }
     }
 }
 impl<T: FromBinary> FromBinary for std::sync::Mutex<T> {
@@ -1269,7 +1234,7 @@ impl FromBinary for std::sync::atomic::Ordering {
             2 => Self::Relaxed,
             3 => Self::Release,
             4 => Self::SeqCst,
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 }
@@ -1281,7 +1246,7 @@ impl ToBinary for std::sync::atomic::Ordering {
             Self::Relaxed => 2_u8.to_binary(binary),
             Self::Release => 3_u8.to_binary(binary),
             Self::SeqCst => 4_u8.to_binary(binary),
-            _ => unreachable!("Tell Course-Brains that they changed atomic::Ordering")
+            _ => unreachable!("Tell Course-Brains that they changed atomic::Ordering"),
         }
     }
 }
@@ -1290,13 +1255,13 @@ mod transmuters {
     use super::{FromBinary, ToBinary};
     pub struct RandomState {
         k0: u64,
-        k1: u64
+        k1: u64,
     }
     impl FromBinary for RandomState {
         fn from_binary(binary: &mut dyn std::io::Read) -> Self {
             Self {
                 k0: u64::from_binary(binary),
-                k1: u64::from_binary(binary)
+                k1: u64::from_binary(binary),
             }
         }
     }
@@ -1308,13 +1273,13 @@ mod transmuters {
     }
     pub struct Instant {
         tv_sec: u64,
-        tv_nsec: u32
+        tv_nsec: u32,
     }
     impl FromBinary for Instant {
         fn from_binary(binary: &mut dyn std::io::Read) -> Self {
             Self {
                 tv_sec: u64::from_binary(binary),
-                tv_nsec: u32::from_binary(binary)
+                tv_nsec: u32::from_binary(binary),
             }
         }
     }
@@ -1340,7 +1305,11 @@ mod tests {
                         let check = i;
                         let mut binary = VecDeque::new();
                         i.to_binary(&mut binary);
-                        assert_eq!(check, <$type>::from_binary(&mut binary), "Failed at number: {i}")
+                        assert_eq!(
+                            check,
+                            <$type>::from_binary(&mut binary),
+                            "Failed at number: {i}"
+                        )
                     }
                 }
             };
@@ -1352,10 +1321,14 @@ mod tests {
                         let check = i;
                         let mut binary = VecDeque::new();
                         i.to_binary(&mut binary);
-                        assert_eq!(check, <$type>::from_binary(&mut binary), "Failed at number: {i}")
+                        assert_eq!(
+                            check,
+                            <$type>::from_binary(&mut binary),
+                            "Failed at number: {i}"
+                        )
                     }
                 }
-            }
+            };
         }
         num_helper!(u8, u8);
         num_helper!(u16, u16);
@@ -1378,25 +1351,25 @@ mod tests {
         fn normal_true() {
             let mut binary = VecDeque::new();
             true.to_binary(&mut binary);
-            assert_eq!(true, bool::from_binary(&mut binary));
+            assert!(bool::from_binary(&mut binary));
         }
         #[test]
         fn normal_false() {
             let mut binary = VecDeque::new();
             false.to_binary(&mut binary);
-            assert_eq!(false, bool::from_binary(&mut binary));
+            assert!(!bool::from_binary(&mut binary));
         }
         #[test]
         fn inequal_true() {
             let mut binary = VecDeque::new();
             true.to_binary(&mut binary);
-            assert_ne!(false, bool::from_binary(&mut binary));
+            assert!(bool::from_binary(&mut binary));
         }
         #[test]
         fn inequal_false() {
             let mut binary = VecDeque::new();
             false.to_binary(&mut binary);
-            assert_ne!(true, bool::from_binary(&mut binary));
+            assert!(!bool::from_binary(&mut binary));
         }
     }
     mod vec_deque {
@@ -1404,7 +1377,7 @@ mod tests {
         #[test]
         fn simple() {
             let mut binary = VecDeque::new();
-            let value = VecDeque::from([1,2,7,83]);
+            let value = VecDeque::from([1, 2, 7, 83]);
             value.to_binary(&mut binary);
             assert_eq!(value, VecDeque::from_binary(&mut binary))
         }

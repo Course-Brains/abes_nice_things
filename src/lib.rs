@@ -1,8 +1,6 @@
 //! A collection of types, functions, traits, and macros which
 //! I found to be helpful and improve my experience while programming
 
-mod as_from;
-pub use as_from::{AsFrom, AsInto, AsTryFrom, AsTryInto, Either};
 mod from_binary;
 pub use from_binary::{Binary, FromBinary, ToBinary};
 mod input;
@@ -12,8 +10,8 @@ pub use abes_nice_procs::{method, FromBinary, ToBinary};
 
 pub mod prelude {
     pub use crate::{
-        assert_pattern, assert_pattern_ne, debug, debug_println, method, AsFrom, AsInto,
-        AsTryFrom, AsTryInto, Binary, FromBinary, ToBinary,
+        assert_pattern, assert_pattern_ne, debug, debug_println, method, Binary, FromBinary,
+        ToBinary,
     };
 }
 /// A version of [println] that uses the same
@@ -62,7 +60,7 @@ macro_rules! assert_pattern {
 /// A version of [assert_ne] that
 /// uses pattern matching to determine
 /// whether or not to [panic].
-/// 
+///
 /// For more information, see [assert_pattern]
 #[macro_export]
 macro_rules! assert_pattern_ne {
