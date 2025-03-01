@@ -7,7 +7,8 @@ pub mod from_binary;
 pub use from_binary::{Binary, FromBinary, ToBinary};
 pub mod item;
 pub use item::Item;
-pub mod input;
+mod input;
+pub use input::Input;
 use std::{
     io::stdin,
     sync::{Mutex, MutexGuard},
@@ -17,11 +18,11 @@ pub use abes_nice_procs::{method, FromBinary, ToBinary};
 
 pub mod prelude {
     pub use crate::{
-        assert_pattern, assert_pattern_ne, debug, debug_println, input, method, AsFrom, AsInto,
+        assert_pattern, assert_pattern_ne, debug, debug_println, method, AsFrom, AsInto,
         AsTryFrom, AsTryInto, Binary, FromBinary, ToBinary,
     };
 }
-/// A version of [println] that uses the same
+/// A version of [println] that uses the same{{{
 /// input syntax but only prints when
 /// the crate is not compiled with '--release'
 /// it is essentially equivalent to
@@ -42,7 +43,7 @@ macro_rules! debug_println {
     }
 }
 #[macro_export]
-macro_rules! assert_pattern {
+macro_rules! assert_pattern {//{{{
     ($item: ident, $pattern: pat_param) => {
         if let $pattern = $item {}
         else {
@@ -55,7 +56,7 @@ macro_rules! assert_pattern {
             panic!("{}", format_args!($($arg)*));
         }
     };
-}
+}//}}}
 #[macro_export]
 macro_rules! assert_pattern_ne {
     ($item: ident, $pattern: pat_param) => {
@@ -114,7 +115,6 @@ macro_rules! debug {
         }
     };
 }
-
 /// A version of [OnceLock](std::sync::OnceLock)
 /// which has the method used be determined at creation and consistent.
 /// Main benefit is that you won't have to type out the method multiple
@@ -192,7 +192,7 @@ impl<'a, T> Drop for OnDrop<'a, T> {
         (self.method)(input)
     }
 }
-/// A type to run code when the thread panics.
+/// A type to run code when the thread panics.{{{
 /// In order to actually run the code,
 /// the instance of this must exist when the thread panics.
 /// aka. it needs to not have been dropped.
@@ -200,7 +200,7 @@ impl<'a, T> Drop for OnDrop<'a, T> {
 /// the main section of your thread, or put it in main.
 /// However, you can also put it in a function to handle panics
 /// specifically inside that function.
-/// Or you can drop it to remove it when you no longer need it.
+/// Or you can drop it to remove it when you no longer need it.}}}
 pub struct OnPanic<'a, T> {
     method: &'a dyn Fn(&T),
     input: T,
@@ -225,31 +225,6 @@ impl<'a, T> Drop for OnPanic<'a, T> {
         if std::thread::panicking() {
             (self.method)(&self.input)
         }
-    }
-}
-use std::sync::mpsc::{channel, Receiver, RecvError, SendError, Sender};
-pub struct Transceiver<T> {
-    tx: Sender<T>,
-    rx: Receiver<T>,
-}
-impl<T> Transceiver<T> {
-    pub fn new() -> (Self, Self) {
-        let (tx1, rx2) = channel::<T>();
-        let (tx2, rx1) = channel::<T>();
-        return (
-            Transceiver { tx: tx1, rx: rx1 },
-            Transceiver { tx: tx2, rx: rx2 },
-        );
-    }
-    pub fn send(&self, data: T) -> Result<(), SendError<T>> {
-        self.tx.send(data)
-    }
-    pub fn recv(&self) -> Result<T, RecvError> {
-        self.rx.recv()
-    }
-    pub fn call(&self, data: T) -> Result<T, error::TransError<T>> {
-        self.tx.send(data)?;
-        Ok(self.rx.recv()?)
     }
 }
 pub enum Either<T, U> {
