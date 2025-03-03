@@ -279,3 +279,28 @@ impl<E> Default for Input<'_, E> {
         }
     }
 }
+/// This gets input from the user through the terminal.
+/// It will wait for them to press enter(new line),
+/// then will return whatever they typed as a [String],
+/// without the trailing new line(\n or \r).
+/// For instance, if you typed this in the terminal:
+/// ```terminal
+/// Hello! I am an example!
+/// ```
+/// Then, this would return the [String]:
+/// "Hello! I am an example!"
+///
+/// This is a convenience function which is equivalent
+/// to using [Input] in the following way:
+/// ```
+/// # use abes_nice_things::Input;
+/// # fn main() {
+/// <Input>::new().get().unwrap()
+/// # ;
+/// # }
+/// ```
+/// For more information, see the type level
+/// [documentation](Input)
+pub fn input() -> String {
+    <Input>::new().get().unwrap()
+}

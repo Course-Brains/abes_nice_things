@@ -4,7 +4,7 @@
 mod from_binary;
 pub use from_binary::{Binary, FromBinary, ToBinary};
 mod input;
-pub use input::Input;
+pub use input::{Input, input};
 
 pub use abes_nice_procs::{method, FromBinary, ToBinary};
 
