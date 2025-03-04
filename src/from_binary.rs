@@ -539,9 +539,12 @@ impl<T: FromBinary + std::hash::Hash + Eq, S: FromBinary + std::hash::BuildHashe
         out
     }
 }
+impl<T: FromBinary + std::hash::Hash + Eq> FromBinary for std::collections::HashSet<T> {
+    fn from_binary(binary: &mut dyn Read) -> Self {
+        Vec::from_binary(binary).into_iter().collect()
+    }
+}
 impl<T: ToBinary, S: ToBinary> ToBinary for std::collections::HashSet<T, S> {
-    // Seriously? Again?
-    // I'm noticing a pattern...
     fn to_binary(&self, binary: &mut dyn Write) {
         self.len().to_binary(binary);
         self.hasher().to_binary(binary);
@@ -550,19 +553,8 @@ impl<T: ToBinary, S: ToBinary> ToBinary for std::collections::HashSet<T, S> {
         }
     }
 }
-#[cfg(feature = "transmute_binary")]
-impl FromBinary for std::hash::RandomState {
-    fn from_binary(binary: &mut dyn Read) -> Self {
-        unsafe { transmute::<RandomState, Self>(RandomState::from_binary(binary)) }
-    }
-}
-#[cfg(feature = "transmute_binary")]
-impl ToBinary for std::hash::RandomState {
-    fn to_binary(&self, binary: &mut dyn Write) {
-        unsafe {
-            transmute::<Self, RandomState>(self.clone()).to_binary(binary);
-        }
-    }
+impl<T: ToBinary> ToBinary for std::collections::HashSet<T> {
+    vec_helper!();
 }
 impl<
         K: FromBinary + Eq + std::hash::Hash,
@@ -583,6 +575,11 @@ impl<
         out
     }
 }
+impl<K: FromBinary + std::hash::Hash + Eq, V: FromBinary> FromBinary for std::collections::HashMap<K, V> {
+    fn from_binary(binary: &mut dyn Read) -> Self {
+        Vec::from_binary(binary).into_iter().collect()
+    }
+}
 impl<K: ToBinary, V: ToBinary, S: ToBinary> ToBinary for std::collections::HashMap<K, V, S> {
     fn to_binary(&self, binary: &mut dyn Write) {
         self.len().to_binary(binary);
@@ -592,6 +589,9 @@ impl<K: ToBinary, V: ToBinary, S: ToBinary> ToBinary for std::collections::HashM
             val.to_binary(binary);
         }
     }
+}
+impl<K: ToBinary, V: ToBinary> ToBinary for std::collections::HashMap<K, V> {
+    vec_helper!();
 }
 impl<T: FromBinary + Ord> FromBinary for std::collections::BinaryHeap<T> {
     fn from_binary(binary: &mut dyn Read) -> Self {
