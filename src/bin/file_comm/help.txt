@@ -1,0 +1,38 @@
+"This is designed to send files to and from people who are able to communicate with each other over TCP.
+The person hosting the TCP listener can be decided at runtime, but only one person in the interaction can host.
+Hosting has certain advantages and disadvantages:
+
+When receiving, you can recieve from multiple people easily.
+When sending, you can send to multiple people easily.
+
+But:
+You cannot initiate the connections.
+
+While there may only be one downside, it contains certain risks.
+You must confirm that you are sending or recieving from the right person or be at rist of malware or data theft.
+Towards that end, when you are hosting, you must confirm every connection before having it go through.
+You must also do this when recieving and not hosting because I am lazy.
+
+Also, and this is important, the data is sent of TCP, not TLS.
+For those who don't recognise these, TLS is encrypted, TCP is not.
+If you are using something that encrypts your data, or you encrypt the files you are sending, then that will matter less.
+
+Here are the arguments to this binary:
+    help
+        Prints this out
+    --recv
+        Indicates that you will be recieving a file
+    --send
+        Indicates that you will be sending a file
+        (You must include either --send or --recv)
+    --host [port]
+        Indicates you will be hosting and want to use the given port
+        You must include a port because I am lazy
+    --override [format id]
+        Indicates a maximum format that you are comfortable using.
+        Specifically it will try and get that format to be used, however it does not guarantee that it will.
+        If the other person is not able to use that format, or has overridden an older format,
+        then theirs will be used as it is the newest that both parties are willing to use.
+        
+Using this you may notice that it closes and must be rerun after every successful exchange(unless you are hosting)
+That is because I am too lazy to properly implement this, and I don't intend to."

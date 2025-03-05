@@ -2,8 +2,13 @@
 name = "abes_nice_things"
 version = "0.1.1"
 edition = "2021"
+default-run = "file_comm"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bins]]
+name = "file_comm"
+path = "src/bin/file_comm/main.rs"
 
 [dependencies]
 abes_nice_procs = { git = "https://github.com/Course-Brains/abes_nice_procs.git", rev = "445599f" }
