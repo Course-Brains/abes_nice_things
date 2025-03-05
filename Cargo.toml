@@ -1,6 +1,6 @@
 [package]
 name = "abes_nice_things"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 default-run = "file_comm"
 

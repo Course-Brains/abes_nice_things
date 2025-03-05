@@ -29,3 +29,22 @@ If you find a bug while using this, please report it as an issue,
 and if you find a significant security vulnerability(although
 I don't have anything in this library yet that would warrant that)
 please report it privately through GitHub.
+
+# Binaries
+## file_comm
+file_comm is a binary for sending files through direct peer to peer with a format
+handshake while allowing either the sender or receiver to host the
+connection.
+To download it, run
+```
+cargo install --git https://github.com/Course-Brains/abes_nice_things.git" --branch release
+```
+Once you have done that, you will be able to get more information by using
+```
+file_comm help
+```
+Or, if you have downloaded this library in its entirety for whatever
+reason, you can get more information through
+```
+cargo run -- help
+```
