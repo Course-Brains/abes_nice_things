@@ -2,6 +2,26 @@ use std::net::*;
 use abes_nice_things::{input, Input};
 mod formats;
 
+static mut QUIET: bool = false;
+
+#[macro_export]
+macro_rules! quiet {
+    () => {
+        unsafe {
+            if !crate::QUIET {
+                println!()
+            }
+        }
+    };
+    ($($args:tt)*) => {
+        unsafe {
+            if !crate::QUIET  {
+                println!($($args)*)
+            }
+        }
+    }
+}
+
 fn main() {
     let settings = Settings::new();
     if let None = settings {
@@ -14,14 +34,14 @@ fn main() {
     }
 }
 fn host(port: u16, settings: Settings) {
-    println!("Listening...");
+    quiet!("Listening...");
     for connection in TcpListener::bind(
         (Ipv4Addr::UNSPECIFIED, port)
     ).expect("Failed to bind to port").incoming() {
-        println!("Incoming connection");
+        quiet!("Incoming connection");
         match connection {
             Ok(stream) => {
-                if let Err(error) = formats::hand_shake(stream, settings) {
+                if let Err(error) = formats::hand_shake(stream, settings.clone()) {
                     eprintln!("{error}")
                 }
             }
@@ -31,13 +51,17 @@ fn host(port: u16, settings: Settings) {
 }
 fn connect(settings: Settings) {
     loop {
-        match settings.mode {
-            Mode::Send => println!("What port:addr do you want to send a file to?"),
-            Mode::Recv => println!("What port:addr do you want to recieve a file from?")
+        match settings.clone().mode {
+            Mode::Send => println!("What addr:port do you want to send a file to?"),
+            Mode::Recv => println!("What addr:port do you want to recieve a file from?")
         }
-        match TcpStream::connect(input()) {
+        let addr = match settings.clone().target {
+            Some(target) => target,
+            None => input()
+        };
+        match TcpStream::connect(addr) {
             Ok(stream) => {
-                if let Err(error) = formats::hand_shake(stream, settings) {
+                if let Err(error) = formats::hand_shake(stream, settings.clone()) {
                     eprintln!("{error}")
                 }
             }
@@ -45,15 +69,22 @@ fn connect(settings: Settings) {
         }
     }
 }
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct Settings {
     mode: Mode,
     host: Option<u16>,
-    overide: Option<formats::FormatID>
+    overide: Option<formats::FormatID>,
+    // Sender only
+    path: Option<String>,
+    // Client only
+    target: Option<String>,
+    // Reciever only
+    auto_accept: bool,
 }
 impl Settings {
     const HELP: &str = include_str!("help.txt");
     fn new() -> Option<Settings> {
+        
         let mut out = Settings::default();
         let mut mode = None;
         let mut args = std::env::args();
@@ -80,8 +111,31 @@ impl Settings {
                         out.overide.unwrap() > formats::HIGHEST,
                         "Need a valid format id after --override"
                     )
+                },
+                "--path" => {
+                    out.path = Some(
+                        args.next().expect("Need a file path after --path")
+                    )
                 }
-                _ => {}
+                "--no-path" => out.path = None,
+                "--target" => {
+                    out.target = Some(
+                        args.next().expect("Need a addr:port after --target")
+                    )
+                }
+                "--no-target" => out.target = None,
+                "--quiet" => unsafe {
+                    QUIET = true;
+                }
+                "--normal" => unsafe {
+                    QUIET = false;
+                }
+                "--auto-accept" => out.auto_accept = true,
+                "--no-auto-accept" => out.auto_accept = false,
+                _ => {
+                    println!("{}", Settings::HELP);
+                    return None
+                }
             }
         }
         match mode {
@@ -113,12 +167,15 @@ impl Default for Settings {
         Settings {
             mode: Mode::Recv,
             host: None,
-            overide: None
+            overide: None,
+            path: None,
+            target: None,
+            auto_accept: false,
         }
     }
 }
 #[derive(Clone, Copy)]
 enum Mode {
     Send,
-    Recv
+    Recv,
 }

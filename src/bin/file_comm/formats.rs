@@ -1,6 +1,6 @@
 use std::net::TcpStream;
 use abes_nice_things::{ToBinary, FromBinary};
-use crate::{Settings, Mode};
+use crate::{Settings, Mode, quiet};
 
 pub type FormatID = u32;
 pub const HIGHEST: FormatID = 0;
@@ -18,11 +18,11 @@ pub fn hand_shake(stream: TcpStream, settings: Settings) -> Result<(), String> {
     }
 }
 fn send_hand_shake(mut stream: TcpStream, settings: Settings) -> Result<(), String> {
-    println!("Sending suggested format: {}", settings.get_format());
+    quiet!("Sending suggested format: {}", settings.get_format());
     settings.get_format().to_binary(&mut stream);
     // Format is decided by the reciever
     let format = FormatID::from_binary(&mut stream);
-    println!("Decided to use format: {format}\nFormat handshake done");
+    quiet!("Decided to use format: {format}\nFormat handshake done");
     match format {
         0 => f0::send(stream, settings),
         _ => return Err("Invalid format given by other".to_string())
@@ -30,25 +30,25 @@ fn send_hand_shake(mut stream: TcpStream, settings: Settings) -> Result<(), Stri
     Ok(())
 }
 fn recv_hand_shake(mut stream: TcpStream, settings: Settings) -> Result<(), String> {
-    println!("Waiting for suggested format");
+    quiet!("Waiting for suggested format");
     let other_highest = FormatID::from_binary(&mut stream);
-    println!("Suggestion: {other_highest}");
+    quiet!("Suggestion: {other_highest}");
     let format = {
         // We are able to process their highest format
         if other_highest <= settings.get_format() {
-            println!("Accepting suggestion");
+            quiet!("Accepting suggestion");
             other_highest
         }
         // We cannot match them, so they have to match us
         else {
-            println!("Suggestion is impossible, sending alternative");
+            quiet!("Suggestion is impossible, sending alternative");
             settings.get_format()
         }
     };
     Ok::<u32, String>(format).to_binary(&mut stream);
-    println!("Format handshake done");
+    quiet!("Format handshake done");
     match format {
-        0 => f0::recv(stream),
+        0 => f0::recv(stream, settings),
         _ => unreachable!()
     };
     Ok(())
@@ -64,7 +64,7 @@ mod f0 {
         path::PathBuf,
         io::{Read, Write}
     };
-    use crate::Settings;
+    use crate::{Settings, quiet};
     use abes_nice_things::{input, Input, ToBinary, FromBinary};
 
     static mut TO_SEND: Option<PathBuf> = None;
@@ -78,15 +78,20 @@ mod f0 {
             },
             None => {
                 loop {
-                    println!("What file do you want to send?");
-                    let path = input();
-                    match File::open(&path) {
-                        
+                    let path = match settings.path {
+                        Some(ref path) => path,
+                        None => {
+                            println!("What file do you want to send?");
+                            &input()
+                        }
+                    };
+                    match File::open(&path) { 
                         Ok(file_in) => {
-                            println!("Valid file");
+                            quiet!("Valid file");
                             file = file_in;
                             if let Some(_) = settings.host {
-                                if "y".to_string() == <Input>::yn()
+                                if let Some(_) = settings.path {}
+                                else if "y".to_string() == <Input>::yn()
                                     .msg("Do you want to use this for subsequent requests?y/n")
                                 .get().unwrap() {
                                     unsafe { TO_SEND = Some(PathBuf::from(&path)) }
@@ -102,20 +107,21 @@ mod f0 {
         let path = path.file_name().expect("Failed to get file name").to_str().unwrap();
         let len = file.metadata().expect("Failed to get file metadata").len();
 
-        println!("Sending metadata");
+        quiet!("Sending metadata");
         (path.len() as u32).to_binary(&mut stream);
         stream.write_all(path.as_bytes()).unwrap();
-        println!("Sending file");
+        quiet!("Sending file");
         transfer(file, stream, len, 1000);
-        println!("File sent")
+        quiet!("File sent")
     }
-    pub fn recv(mut stream: TcpStream) {
-        println!("Getting metadata");
+    pub fn recv(mut stream: TcpStream, settings: Settings) {
+        quiet!("Getting metadata");
         let name_len = u32::from_binary(&mut stream);
         let mut buf = vec![0; name_len as usize];
         stream.read_exact(&mut buf).unwrap();
         let name = String::from_utf8(buf).unwrap();
-        if "n" == match stream.peer_addr() {
+        if settings.auto_accept {}
+        else if "n" == match stream.peer_addr() {
             Ok(addr) => <Input>::yn().msg(
                 &format!(
                     "Are you sure you want to accept {name} from {addr}?y/n"
@@ -130,11 +136,11 @@ mod f0 {
             return
         }
         let mut buf = Vec::new();
-        println!("Getting data");
+        quiet!("Getting data");
         stream.read_to_end(&mut buf).unwrap();
-        println!("Writing to file");
+        quiet!("Writing to file");
         std::fs::write(name, buf).unwrap();
-        println!("Done")
+        quiet!("Done")
         
     }
     fn transfer(mut from: impl Read, mut to: impl Write, mut len: u64, interval: usize) {
