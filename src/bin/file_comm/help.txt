@@ -1,4 +1,4 @@
-"This is designed to send files to and from people who are able to communicate with each other over TCP.
+This is designed to send files to and from people who are able to communicate with each other over TCP.
 The person hosting the TCP listener can be decided at runtime, but only one person in the interaction can host.
 Hosting has certain advantages and disadvantages:
 
@@ -15,12 +15,17 @@ You must also do this when recieving and not hosting because I am lazy.
 
 Also, and this is important, the data is sent of TCP, not TLS.
 For those who don't recognise these, TLS is encrypted, TCP is not.
-If you are using something that encrypts your data, or you encrypt the files you are sending, then that will matter less.
+If you are using something that encrypts your data,
+or you encrypt the files you are sending, then that will matter less.
+
 
 Here are the arguments to this binary:
-    help
+(Arguments marked with * are implied by default unless something
+else overrides them)
+
+*   help
         Prints this out
-    --recv
+*   --recv
         Indicates that you will be recieving a file
     --send
         Indicates that you will be sending a file
@@ -30,9 +35,48 @@ Here are the arguments to this binary:
         You must include a port because I am lazy
     --override [format id]
         Indicates a maximum format that you are comfortable using.
-        Specifically it will try and get that format to be used, however it does not guarantee that it will.
-        If the other person is not able to use that format, or has overridden an older format,
+        Specifically it will try and get that format to be used,
+	however it does not guarantee that it will.
+        If the other person is not able to use that format,
+	or has overridden an older format,
         then theirs will be used as it is the newest that both parties are willing to use.
+*   --no-overide
+	Makes it so that you are no longer overriding the
+	format, overriding any previous --override arguments
+    --path [path]
+	SEND ONLY
+	Specifies the path to the file you want to send, meaning
+	that you will not have the terminal interaction about
+	asking which file you want to send.
+*   --no-path
+	SEND ONLY
+	Makes it so that it will once again ask for which file
+	you want to send, overriding any previous --path
+	arguments.
+    --target [addr:port]
+	CLIENT ONLY(not the one hosting)
+	Specifies what addr:port you want to connect to,
+	bypassing the interaction where it asks you.
+*   --no-target
+	CLIENT ONLY
+	Makes it so that you will once again ask you for who you
+	want to connect to, overriding any previous --target
+	arguments.
+    --quiet
+	Removes non-necessary printing.
+	Notably, it will still print instructions for any
+	interactions you need to do, such as specifying a file.
+*   --normal
+	Makes it so that you will once again get a normal amount
+	of printing, overriding any previous --quiet arguments
+    --auto-accept
+	Makes it so that incoming files are automatically
+	accepted, skipping the relevant input prompt
+*   --no-auto-accept
+	Makes it so that it will once again ask before accepting
+	incoming files, overriding any previous --auto-accept
+	arguments.
         
-Using this you may notice that it closes and must be rerun after every successful exchange(unless you are hosting)
-That is because I am too lazy to properly implement this, and I don't intend to."
+Using this you may notice that it closes and must be rerun after
+every successful exchange(unless you are hosting)
+That is because I am too lazy to properly implement this, and I don't intend to.

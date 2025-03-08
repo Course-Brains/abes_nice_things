@@ -84,7 +84,6 @@ struct Settings {
 impl Settings {
     const HELP: &str = include_str!("help.txt");
     fn new() -> Option<Settings> {
-        
         let mut out = Settings::default();
         let mut mode = None;
         let mut args = std::env::args();
@@ -99,19 +98,20 @@ impl Settings {
                 "--host" => {
                     out.host = Some(
                         args.next().expect("Need a port after --host")
-                            .parse::<u16>().expect("Need a port after --host")
+                        .parse::<u16>().expect("Need a port after --host")
                     );
                 },
                 "--override" => {
                     out.overide = Some(
                         args.next().expect("Need a format id after --override")
-                            .parse::<formats::FormatID>().expect("Need for a format id after --override")
+                        .parse::<formats::FormatID>().expect("Need for a format id after --override")
                     );
                     assert!(
                         out.overide.unwrap() > formats::HIGHEST,
                         "Need a valid format id after --override"
                     )
-                },
+                }
+                "--no-override" => out.overide = None,
                 "--path" => {
                     out.path = Some(
                         args.next().expect("Need a file path after --path")
