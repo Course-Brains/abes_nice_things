@@ -85,13 +85,13 @@ mod f0 {
                             &input()
                         }
                     };
-                    match File::open(&path) { 
+                    match File::open(path) { 
                         Ok(file_in) => {
                             quiet!("Valid file");
                             file = file_in;
-                            if let Some(_) = settings.host {
-                                if let Some(_) = settings.path {}
-                                else if "y".to_string() == <Input>::yn()
+                            if settings.host.is_some() {
+                                if settings.path.is_some() {}
+                                else if *"y" == <Input>::yn()
                                     .msg("Do you want to use this for subsequent requests?y/n")
                                 .get().unwrap() {
                                     unsafe { TO_SEND = Some(PathBuf::from(&path)) }

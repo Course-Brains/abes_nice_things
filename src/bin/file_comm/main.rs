@@ -8,14 +8,14 @@ static mut QUIET: bool = false;
 macro_rules! quiet {
     () => {
         unsafe {
-            if !crate::QUIET {
+            if !$crate::QUIET {
                 println!()
             }
         }
     };
     ($($args:tt)*) => {
         unsafe {
-            if !crate::QUIET  {
+            if !$crate::QUIET  {
                 println!($($args)*)
             }
         }
@@ -24,7 +24,7 @@ macro_rules! quiet {
 
 fn main() {
     let settings = Settings::new();
-    if let None = settings {
+    if settings.is_none() {
         return
     }
     let settings = settings.unwrap();
@@ -153,7 +153,7 @@ impl Settings {
                 }
             }
         }
-        return Some(out);
+        Some(out)
     }
     fn get_format(&self) -> formats::FormatID {
         match self.overide {
