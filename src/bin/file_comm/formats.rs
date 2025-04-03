@@ -19,9 +19,9 @@ pub fn hand_shake(stream: TcpStream, settings: Settings) -> Result<(), String> {
 }
 fn send_hand_shake(mut stream: TcpStream, settings: Settings) -> Result<(), String> {
     quiet!("Sending suggested format: {}", settings.get_format());
-    settings.get_format().to_binary(&mut stream);
+    settings.get_format().to_binary(&mut stream).unwrap();
     // Format is decided by the reciever
-    let format = FormatID::from_binary(&mut stream);
+    let format = FormatID::from_binary(&mut stream).unwrap();
     quiet!("Decided to use format: {format}\nFormat handshake done");
     match format {
         0 => f0::send(stream, settings),
@@ -31,7 +31,7 @@ fn send_hand_shake(mut stream: TcpStream, settings: Settings) -> Result<(), Stri
 }
 fn recv_hand_shake(mut stream: TcpStream, settings: Settings) -> Result<(), String> {
     quiet!("Waiting for suggested format");
-    let other_highest = FormatID::from_binary(&mut stream);
+    let other_highest = FormatID::from_binary(&mut stream).unwrap();
     quiet!("Suggestion: {other_highest}");
     let format = {
         // We are able to process their highest format
@@ -45,7 +45,7 @@ fn recv_hand_shake(mut stream: TcpStream, settings: Settings) -> Result<(), Stri
             settings.get_format()
         }
     };
-    Ok::<u32, String>(format).to_binary(&mut stream);
+    Ok::<u32, String>(format).to_binary(&mut stream).unwrap();
     quiet!("Format handshake done");
     match format {
         0 => f0::recv(stream, settings),
@@ -108,7 +108,7 @@ mod f0 {
         let len = file.metadata().expect("Failed to get file metadata").len();
 
         quiet!("Sending metadata");
-        (path.len() as u32).to_binary(&mut stream);
+        (path.len() as u32).to_binary(&mut stream).unwrap();
         stream.write_all(path.as_bytes()).unwrap();
         quiet!("Sending file");
         transfer(file, stream, len, 1000);
@@ -116,7 +116,7 @@ mod f0 {
     }
     pub fn recv(mut stream: TcpStream, settings: Settings) {
         quiet!("Getting metadata");
-        let name_len = u32::from_binary(&mut stream);
+        let name_len = u32::from_binary(&mut stream).unwrap();
         let mut buf = vec![0; name_len as usize];
         stream.read_exact(&mut buf).unwrap();
         let name = String::from_utf8(buf).unwrap();
