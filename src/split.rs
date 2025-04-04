@@ -42,7 +42,7 @@ pub trait Split: std::io::Read + std::io::Write where Self: Sized {
     fn split(self) -> Result<Halves<Self>, std::io::Error>;
     /// This consumes the two halves of the *same* source and if they were
     /// from the same source, will return the original, otherwise, it will
-    /// return the two halves given to it. For more information on how to
+    /// return None. For more information on how to
     /// create those halves, see [split](Split::split).
     ///
     /// For example:
@@ -59,7 +59,7 @@ pub trait Split: std::io::Read + std::io::Write where Self: Sized {
     /// ```
     /// However, that only works if you are recombining splits from the same
     /// source, if they are different, [recombine](Split::recombine) will
-    /// return [Err].
+    /// return [None].
     /// ```no_run
     /// # use abes_nice_things::Split;
     /// # use std::fs::File;
@@ -69,17 +69,41 @@ pub trait Split: std::io::Read + std::io::Write where Self: Sized {
     /// let (read1, _) = original1.split().unwrap();
     /// let (_, write2) = original2.split().unwrap();
     /// // invalid recombine
-    /// File::recombine(read1, write2).unwrap_err();
+    /// assert!(File::recombine(read1, write2).is_none());
     /// # }
     /// ```
     /// Due to the read and write halves being from different sources,
     /// they cannot be recombined.
-    fn recombine(read: ReadHalf<Self>, write: WriteHalf<Self>) -> Result<Self, Halves<Self>> {
+    ///
+    /// In order to check if two halves are from the same source, they
+    /// implement [PartialEq] and can be compared to one another:
+    /// ```no_run
+    /// # use abes_nice_things::Split;
+    /// # use std::fs::File;
+    /// # fn main() {
+    /// let original1 = File::open("~/.vimrc").unwrap();
+    /// let original2 = File::open("~/.cargo/bin/rustup").unwrap();
+    /// let (read1, write1) = original1.split().unwrap();
+    /// let (read2, write2) = original2.split().unwrap();
+    /// assert!(read1 == write1);
+    /// assert!(read2 == write2);
+    /// assert!(read1 != write2);
+    /// assert!(read2 != write1);
+    /// # }
+    /// ```
+    /// However, while [ReadHalf] can be compared to [WriteHalf] and
+    /// vice versa, comparing a [ReadHalf] and another [ReadHalf] (same
+    /// for [WriteHalf], just not mentioning it), it will not check if
+    /// they are from the same source, and will instead compare the
+    /// [Reader](std::io::Read) or [Writer](std::io::Write) inside while
+    /// ignoring the id because there is no situation where an two
+    /// [ReadHalf] will have the same id(same for [WriteHalf])
+    fn recombine(read: ReadHalf<Self>, write: WriteHalf<Self>) -> Option<Self> {
         match read.1 == write.1 {
             // They are from the same source, yay!
-            true => Ok(read.0),
+            true => Some(read.0),
             // They are not from the same source, booooooooo
-            false => Err((read, write))
+            false => None
         }
     }
 }
@@ -103,18 +127,43 @@ impl Split for std::fs::File {
         ))
     }
 }
-/// This is a wrapper which restricts a type to only being able to write.
-/// For instance, if it was wrapping a [File](std::fs::File), it would
-/// no longer be able to [Read](std::io::Read).
-///
-/// This, along with its sister type [ReadHalf], are created by calling
-/// [split](Split::split) on certain types, such as [File](std::fs::File)
-/// and [TcpStream](std::net::TcpStream). While I'm not sure why you
-/// would split a [File](std::fs::File), you can.
 #[derive(Debug)]
 pub struct WriteHalf<W: std::io::Write>(W, Option<usize>);
 impl<W: std::io::Write> WriteHalf<W> {
-     
+     pub const fn new(write: W) -> WriteHalf<W> {
+        WriteHalf(write, None)
+     }
+     pub const unsafe fn new_id(write: W, id: usize) -> WriteHalf<W> {
+        WriteHalf(write, Some(id))
+     }
+     pub fn unwrap(self) -> Option<W> {
+        if self.1.is_none() {
+            return Some(self.0)
+        }
+        None
+     }
+     pub unsafe fn unwrap_unchecked(self) -> W {
+        self.0
+     }
+     pub const fn get_id(&self) -> Option<usize> {
+        self.1
+     }
+}
+impl<W: std::io::Write + PartialEq> PartialEq for WriteHalf<W> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+    fn ne(&self, other: &Self) -> bool {
+        self.0 != other.0
+    }
+}
+impl<W: std::io::Write, R: std::io::Read> PartialEq<ReadHalf<R>> for WriteHalf<W> {
+    fn eq(&self, other: &ReadHalf<R>) -> bool {
+        self.1 == other.1
+    }
+    fn ne(&self, other: &ReadHalf<R>) -> bool {
+        self.1 != other.1
+    }
 }
 impl<W: std::io::Write> std::io::Write for WriteHalf<W> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
@@ -149,6 +198,42 @@ impl<W: std::io::Write + ToBinary> ToBinary for WriteHalf<W> {
 }
 #[derive(Debug)]
 pub struct ReadHalf<R: std::io::Read>(R, Option<usize>);
+impl<R: std::io::Read> ReadHalf<R> {
+    pub const fn new(read: R) -> ReadHalf<R> {
+        ReadHalf(read, None)
+    }
+    pub const unsafe fn new_id(read: R, id: usize) -> ReadHalf<R> {
+        ReadHalf(read, Some(id))
+    }
+    pub fn unwrap(self) -> Option<R> {
+        if self.1.is_none() {
+            return Some(self.0)
+        }
+        None
+    }
+    pub unsafe fn unwrap_unchecked(self) -> R {
+        self.0
+    }
+    pub const fn get_id(&self) -> Option<usize> {
+        self.1
+    }
+}
+impl<R: std::io::Read + PartialEq> PartialEq for ReadHalf<R> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+    fn ne(&self, other: &Self) -> bool {
+        self.0 != other.0
+    }
+}
+impl<W: std::io::Write, R: std::io::Read> PartialEq<WriteHalf<W>> for ReadHalf<R> {
+    fn eq(&self, other: &WriteHalf<W>) -> bool {
+        self.1 == other.1
+    }
+    fn ne(&self, other: &WriteHalf<W>) -> bool {
+        self.1 != other.1
+    }
+}
 impl<R: std::io::Read> std::io::Read for ReadHalf<R> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         self.0.read(buf)
