@@ -50,7 +50,7 @@ fn host(port: u16, settings: Settings) {
     }
 }
 fn connect(settings: Settings) {
-    loop {
+    while settings.repeat {
         match settings.clone().mode {
             Mode::Send => println!("What addr:port do you want to send a file to?"),
             Mode::Recv => println!("What addr:port do you want to recieve a file from?")
@@ -80,6 +80,8 @@ struct Settings {
     target: Option<String>,
     // Reciever only
     auto_accept: bool,
+    // Whether or not to do the sequence again once it finishes
+    repeat: bool
 }
 impl Settings {
     const HELP: &str = include_str!("help.txt");
@@ -132,10 +134,9 @@ impl Settings {
                 }
                 "--auto-accept" => out.auto_accept = true,
                 "--no-auto-accept" => out.auto_accept = false,
-                _ => {
-                    println!("{}", Settings::HELP);
-                    return None
-                }
+                "--repeat" => out.repeat = true,
+                "--no-repeat" => out.repeat = false,
+                _ => {}
             }
         }
         match mode {
@@ -171,6 +172,7 @@ impl Default for Settings {
             path: None,
             target: None,
             auto_accept: false,
+            repeat: false
         }
     }
 }

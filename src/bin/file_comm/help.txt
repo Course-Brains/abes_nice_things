@@ -76,6 +76,15 @@ else overrides them)
 	Makes it so that it will once again ask before accepting
 	incoming files, overriding any previous --auto-accept
 	arguments.
+    --repeat
+	Makes it so that after going through the loop, it will
+	go through it again until you stop the code from running.
+	This is most helpful when you are hosting so that you can
+	send or recieve multiple times without needing to set up
+	the server each time
+*   --no-repeat
+	Makes it so that it will not repeat after finishing the
+	sequence and will instead close automatically
         
 Using this you may notice that it closes and must be rerun after
 every successful exchange(unless you are hosting)
