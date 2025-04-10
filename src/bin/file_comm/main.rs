@@ -1,5 +1,5 @@
 use std::net::*;
-use abes_nice_things::{input, Input};
+use albatrice::{input, Input};
 mod formats;
 
 static mut QUIET: bool = false;

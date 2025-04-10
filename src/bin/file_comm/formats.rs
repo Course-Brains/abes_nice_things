@@ -1,5 +1,5 @@
 use std::net::TcpStream;
-use abes_nice_things::{ToBinary, FromBinary};
+use albatrice::{ToBinary, FromBinary};
 use crate::{Settings, Mode, quiet};
 
 pub type FormatID = u32;
@@ -67,7 +67,7 @@ mod f0 {
         io::{Read, Write}
     };
     use crate::{Settings, quiet};
-    use abes_nice_things::{input, Input, ToBinary, FromBinary};
+    use albatrice::{input, Input, ToBinary, FromBinary};
 
     static mut TO_SEND: Option<PathBuf> = None;
     pub fn send(mut stream: TcpStream, settings: Settings) {
@@ -166,7 +166,7 @@ mod f1 {
     use std::net::TcpStream;
     use std::io::{Read, Write};
     use crate::{quiet, Settings, QUIET};
-    use abes_nice_things::{FromBinary, ToBinary, Input, input};
+    use albatrice::{FromBinary, ToBinary, Input, input};
     // Assumed to be less than 2^32
     const BUFFER_SIZE: u64 = 1000;
     // A thing for keeping track of how much has been written

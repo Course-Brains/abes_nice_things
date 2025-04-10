@@ -12,7 +12,7 @@ use std::ops::Deref;
 /// Because [Readers](Read) will have the cursor move after
 /// each read, the actual implementation is very easy.
 /// ```
-/// # use abes_nice_things::FromBinary;
+/// # use albatrice::FromBinary;
 /// use std::io::Read;
 /// struct Data {
 ///     num: i64,
@@ -51,7 +51,7 @@ use std::ops::Deref;
 /// This is most simply shown with enums that do not contain
 /// data and just differentiate which variant is being used.
 /// ```
-/// # use abes_nice_things::FromBinary;
+/// # use albatrice::FromBinary;
 /// # use std::io::Read;
 /// enum Example {
 ///     Variant1,
@@ -89,7 +89,7 @@ use std::ops::Deref;
 /// they have data in their variants. The way we get around
 /// that is by just by converting all their data [to binary](ToBinary::to_binary).
 /// ```
-/// # use abes_nice_things::FromBinary;
+/// # use albatrice::FromBinary;
 /// # use std::io::Read;
 /// enum Example<T: FromBinary> {
 ///     EmptyVariant,
@@ -138,7 +138,7 @@ pub trait FromBinary {
     /// # Examples
     /// Reading from a file:
     /// ```no_run
-    /// # use abes_nice_things::FromBinary;
+    /// # use albatrice::FromBinary;
     /// use std::io::Read;
     /// use std::fs::File;
     /// #[derive(Debug)]
@@ -159,7 +159,7 @@ pub trait FromBinary {
     /// ```
     /// Reading from a [VecDeque](std::collections::VecDeque) using the same Data struct:
     /// ```no_run
-    /// # use abes_nice_things::FromBinary;
+    /// # use albatrice::FromBinary;
     /// use std::io::Read;
     /// use std::collections::VecDeque;
     /// # #[derive(Debug)]
@@ -181,7 +181,7 @@ pub trait FromBinary {
     /// ```
     /// Reading from a [TcpStream](std::net::TcpStream)
     /// ```no_run
-    /// # use abes_nice_things::FromBinary;
+    /// # use albatrice::FromBinary;
     /// use std::io::Read;
     /// use std::net::TcpStream;
     /// # #[derive(Debug)]
@@ -223,7 +223,7 @@ pub trait FromBinary {
 /// [ToBinary], you can just call [to_binary](ToBinary::to_binary)
 /// on its individual fields.
 /// ```
-/// # use abes_nice_things::ToBinary;
+/// # use albatrice::ToBinary;
 /// # use std::io::Write;
 /// struct MyStruct {
 ///     field1: String,
@@ -262,7 +262,7 @@ pub trait FromBinary {
 /// in [FromBinary] to identify which variant
 /// was stored.
 /// ```
-/// # use abes_nice_things::ToBinary;
+/// # use albatrice::ToBinary;
 /// # use std::io::Write;
 /// enum Example {
 ///     Variant1,
@@ -291,7 +291,7 @@ pub trait FromBinary {
 ///
 /// More complicated example:
 /// ```
-/// # use abes_nice_things::ToBinary;
+/// # use albatrice::ToBinary;
 /// # use std::io::Write;
 /// enum Example<T: ToBinary> {
 ///     EmptyVariant,
@@ -341,7 +341,7 @@ pub trait ToBinary {
     ///
     /// To [File](std::fs::File):
     /// ```no_run
-    /// # use abes_nice_things::ToBinary;
+    /// # use albatrice::ToBinary;
     /// # use std::io::Write;
     /// # struct Data(());
     /// # impl ToBinary for Data {
@@ -358,7 +358,7 @@ pub trait ToBinary {
     /// ```
     /// To [VecDeque](std::collections::VecDeque)
     /// ```
-    /// # use abes_nice_things::ToBinary;
+    /// # use albatrice::ToBinary;
     /// # use std::collections::VecDeque;
     /// # fn main() {
     /// # let data = "Controlling robots is my game";

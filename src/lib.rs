@@ -82,7 +82,7 @@ macro_rules! assert_pattern_ne {
 ///
 /// It can be used with a block:
 ///```should_panic
-/// # use abes_nice_things::debug;
+/// # use albatrice::debug;
 /// debug!({
 ///     //Code only ran in debug mode
 /// # panic!("Yay!");
@@ -90,20 +90,20 @@ macro_rules! assert_pattern_ne {
 ///```
 /// Or it can be used with an expression:
 ///```should_panic
-/// # use abes_nice_things::debug;
+/// # use albatrice::debug;
 /// debug!(/*expression*/);
 /// # debug!(panic!("I AM HAVING A PANIC ATTACK"));
 ///```
 /// For example:
 ///```
-/// # use abes_nice_things::debug;
+/// # use albatrice::debug;
 /// debug!({
 ///     println!("Yippy!");
 ///     // Any additional code you want
 /// });
 ///```
 ///```
-/// # use abes_nice_things::debug;
+/// # use albatrice::debug;
 /// debug!(println!("Yippy!"));
 /// //     ^^^^^ can only have one thing
 /// //        (note the lack of parenthesis)

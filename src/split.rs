@@ -47,7 +47,7 @@ pub trait Split: std::io::Read + std::io::Write where Self: Sized {
     ///
     /// For example:
     /// ```no_run
-    /// # use abes_nice_things::Split;
+    /// # use albatrice::Split;
     /// # use std::fs::File;
     /// # fn main() {
     /// let original = File::open("~/.vimrc").unwrap();
@@ -61,7 +61,7 @@ pub trait Split: std::io::Read + std::io::Write where Self: Sized {
     /// source, if they are different, [recombine](Split::recombine) will
     /// return [None].
     /// ```no_run
-    /// # use abes_nice_things::Split;
+    /// # use albatrice::Split;
     /// # use std::fs::File;
     /// # fn main() {
     /// let original1 = File::open("~/.vimrc").unwrap();
@@ -78,7 +78,7 @@ pub trait Split: std::io::Read + std::io::Write where Self: Sized {
     /// In order to check if two halves are from the same source, they
     /// implement [PartialEq] and can be compared to one another:
     /// ```no_run
-    /// # use abes_nice_things::Split;
+    /// # use albatrice::Split;
     /// # use std::fs::File;
     /// # fn main() {
     /// let original1 = File::open("~/.vimrc").unwrap();
