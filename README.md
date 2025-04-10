@@ -5,7 +5,7 @@ One of the most useful aspects of what I have made surrounds the topic
 of getting input from the terminal. To understand how to use them,
 I recommend reading the documentation.
 
-If you want to use my libray, you will have to add the dependency
+If you want to use our libray, you will have to add the dependency
 to Cargo.toml directly because this is not on crates.io
 One option is to add
 ```toml
