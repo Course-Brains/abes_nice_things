@@ -131,9 +131,12 @@ impl<'a, E> Input<'a, E> {
 
             let mut string: String = String::new();
             std::io::stdin().read_line(&mut string).unwrap();
-            if let Some('\n' | '\r') = string.chars().next_back() {
-                string.pop();
-            }
+            // removing newline
+            string.pop();
+            // removing the other char of newline on windows
+            // because on windows it is \n\r
+            #[cfg(target_os = "windows")]
+            string.pop();
 
             return Ok(match &self.cond {
                 Some(cond) => {
