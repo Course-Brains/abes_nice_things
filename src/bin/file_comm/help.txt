@@ -23,9 +23,9 @@ Here are the arguments to this binary:
 (Arguments marked with * are implied by default unless something
 else overrides them)
 
-*   help
+    help
         Prints this out
-*   --recv
+    --recv
         Indicates that you will be recieving a file
     --send
         Indicates that you will be sending a file

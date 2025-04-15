@@ -50,7 +50,7 @@ fn host(port: u16, settings: Settings) {
     }
 }
 fn connect(settings: Settings) {
-    while settings.repeat {
+    loop {
         match settings.clone().mode {
             Mode::Send => println!("What addr:port do you want to send a file to?"),
             Mode::Recv => println!("What addr:port do you want to recieve a file from?")
@@ -62,10 +62,17 @@ fn connect(settings: Settings) {
         match TcpStream::connect(addr) {
             Ok(stream) => {
                 if let Err(error) = formats::hand_shake(stream, settings.clone()) {
-                    eprintln!("{error}")
+                    eprintln!("{error}");
+                    continue
                 }
             }
-            Err(error) => eprintln!("Failed to connect: {error}")
+            Err(error) => {
+                eprintln!("Failed to connect: {error}");
+                continue
+            }
+        }
+        if !settings.repeat {
+            break
         }
     }
 }
@@ -147,7 +154,7 @@ impl Settings {
                         "recv"|"r"|"send"|"s" => Ok(true),
                         _ => Ok(false)
                     }
-                }).msg("").get().unwrap().as_str() {
+                }).msg("Do you want to send or recv?").get().unwrap().as_str() {
                     "recv"|"r" => out.mode = Mode::Recv,
                     "send"|"s" => out.mode = Mode::Send,
                     _ => unreachable!()
