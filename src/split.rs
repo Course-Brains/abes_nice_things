@@ -1,5 +1,7 @@
 use crate::{FromBinary, ToBinary};
-static SPLITS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+use std::sync::atomic::AtomicUsize;
+use std::num::NonZeroUsize;
+static SPLITS: AtomicUsize = AtomicUsize::new(1);
 type Halves<T> = (ReadHalf<T>, WriteHalf<T>);
 /// This is a trait designed to [split](Split::split) things that
 /// implement both [Read](std::io::Read) and [Write](std::io::Write)
@@ -109,7 +111,9 @@ pub trait Split: std::io::Read + std::io::Write where Self: Sized {
 }
 impl Split for std::net::TcpStream {
     fn split(self) -> Result<(ReadHalf<Self>, WriteHalf<Self>), std::io::Error> {
-        let id = SPLITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let id = NonZeroUsize::new(
+            SPLITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        ).unwrap();
         Ok((
             ReadHalf(self.try_clone()?, Some(id)),
             WriteHalf(self, Some(id))
@@ -120,34 +124,136 @@ impl Split for std::fs::File {
     fn split(self) -> Result<(ReadHalf<Self>, WriteHalf<Self>), std::io::Error> {
         // Intentionally not accounting for Seek because
         // it is not independant from Reading and Writing
-        let id = SPLITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let id = NonZeroUsize::new(
+            SPLITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        ).unwrap();
         Ok((
             ReadHalf(self.try_clone()?, Some(id)),
             WriteHalf(self, Some(id))
         ))
     }
 }
+/// This holds anything that implements [Write](std::io::Write)
+/// and limits that to be the only way you can interact with it.
+/// This is useful for limiting things that implement both
+/// [Read](std::io::Read) and [Write](std::io::Write) such that
+/// it cannot be [read](std::io::Read::read) from.
+///
+/// Most of the time, this is created by calling [split](Split::split)
+/// however it can be created manually.
+/// ```
+/// # use albatrice::split::WriteHalf;
+/// # use std::collections::VecDeque;
+/// # fn main() {
+/// let vec_deque = VecDeque::new();
+/// // ^ can be written to or read from
+/// let write_half = WriteHalf::new(vec_deque);
+/// // ^ can only be written to
+/// # }
+/// ```
+/// Most of the time, this should not be created manually,
+/// but the option is there.
+/// 
+/// Notably, this also stores an id which is used to tell if
+/// a [WriteHalf] and [ReadHalf] came from the same source
+/// and can therefore be merged in [recombine](Split::recombine).
+///
+/// For more information on how this
+/// is usually created, see [Split]
 #[derive(Debug)]
-pub struct WriteHalf<W: std::io::Write>(W, Option<usize>);
+pub struct WriteHalf<W: std::io::Write>(W, Option<NonZeroUsize>);
 impl<W: std::io::Write> WriteHalf<W> {
-     pub const fn new(write: W) -> WriteHalf<W> {
+    /// This creates an instance of [WriteHalf] containing
+    /// the provided [Writer](std::io::Write).
+    /// ```
+    /// # use albatrice::split::WriteHalf;
+    /// # fn main() {
+    /// let writer = Vec::new();
+    /// let write_half = WriteHalf::new(writer);
+    /// # }
+    /// ```
+    /// Notably, this does not have its id set, however,
+    /// if you do need it set for some reason(I wouldn't
+    /// recommend that) you can by using
+    /// [new_id](WriteHalf::new_id)
+    pub const fn new(write: W) -> WriteHalf<W> {
         WriteHalf(write, None)
-     }
-     pub const unsafe fn new_id(write: W, id: usize) -> WriteHalf<W> {
+    }
+    /// This creates an instance of [WriteHalf] with
+    /// the id set. I can't think of a use case where
+    /// you would need this, but in case you do, this
+    /// is here. Always remember though, this is unsafe
+    /// for a reason. The id is used to determine if
+    /// a [ReadHalf] and [WriteHalf] are from the same
+    /// source for merging purposes. But they don't
+    /// actually get merged, it just takes what was in
+    /// the [ReadHalf] and returns that. Meaning that
+    /// unless they were from the same source, the
+    /// magic trick stops working and could leave
+    /// people confused. So, it uses a unique id system
+    /// to ensure that two halves from different sources
+    /// can NEVER merge.
+    ///
+    /// This will set the id, and
+    /// therefore allow merging so long as both halves
+    /// contain the same type. Don't use this, it is a
+    /// bad idea, unless you are implementing [Split]
+    /// for something. In which case, go right ahead
+    /// because this is the only way for you to do that.
+    pub const unsafe fn new_id(write: W, id: NonZeroUsize) -> WriteHalf<W> {
         WriteHalf(write, Some(id))
-     }
-     pub fn unwrap(self) -> Option<W> {
+    }
+    /// This gets the [Writer](std::io::Write) stored
+    /// in this, on the condition that it is not
+    /// bound. [WriteHalf]s created through
+    /// [Split] are bound to a [ReadHalf] and cannot
+    /// be gotten through this, causing this to
+    /// return [None]. However, if instead, it was
+    /// created by [new](WriteHalf::new), it will
+    /// return the contained [Writer](std::io::Write)
+    /// ```
+    /// # use albatrice::split::WriteHalf;
+    /// # fn main() {
+    /// let writer = Vec::new();
+    /// let write_half = WriteHalf::new(writer);
+    /// let same_writer = write_half.get().unwrap();
+    /// # }
+    /// ```
+    /// In this example, the original writer and the
+    /// extracted writer are one and the same.
+    /// However, if you tried to do this with a
+    /// [WriteHalf] created through [Split], then it
+    /// would panic.
+    pub fn get(self) -> Option<W> {
         if self.1.is_none() {
             return Some(self.0)
         }
         None
-     }
-     pub unsafe fn unwrap_unchecked(self) -> W {
+    }
+    /// Similar to [get](WriteHalf::get) except that
+    /// it does not check if this is valid to get.
+    /// Notably, it is NOT undefined behavior to call
+    /// this, but it does destroy the guarantee given
+    /// by this and [ReadHalf] in that there is only
+    /// at most 1 [Writer](std::io::Write) and 1
+    /// [Reader](std::io::Read) because you could
+    /// use the extracted value to [Read](std::io::Read)
+    /// when you should not be able to.
+    pub unsafe fn get_unchecked(self) -> W {
         self.0
-     }
-     pub const fn get_id(&self) -> Option<usize> {
+    }
+    /// This gets the stored id of this instance. The
+    /// id is used to check if a [ReadHalf] and
+    /// [WriteHalf] came from the same source and can
+    /// therefore be merged together to get the source
+    /// back. Realistically, unless you are implementing
+    /// [Split], you shouldn't be using this. If the
+    /// instance was made manually through
+    /// [new](WriteHalf::new), then this will return
+    /// [None] instead of the id.
+    pub const fn get_id(&self) -> Option<NonZeroUsize> {
         self.1
-     }
+    }
 }
 impl<W: std::io::Write + PartialEq> PartialEq for WriteHalf<W> {
     fn eq(&self, other: &Self) -> bool {
@@ -196,25 +302,127 @@ impl<W: std::io::Write + ToBinary> ToBinary for WriteHalf<W> {
         self.1.as_ref().to_binary(binary)
     }
 }
+/// This holds anything that implements [Read](std::io::Read)
+/// and limits that to be the only way you can interact with it.
+/// This is useful for limiting things that implement both
+/// [Read](std::io::Read) and [Write](std::io::Write) such that
+/// it cannot be [written](std::io::Write::write) to.
+///
+/// Most of the time, this is created by calling [split](Split::split)
+/// however it can be created manually.
+/// ```
+/// # use albatrice::split::ReadHalf;
+/// # use std::collections::VecDeque;
+/// # fn main() {
+/// let vec_deque = VecDeque::new();
+/// // ^ can be written to or read from
+/// let read_half = ReadHalf::new(vec_deque);
+/// // ^ can only be read from
+/// # }
+/// ```
+/// Most of the time, this should not be created manually,
+/// but the option is there.
+/// 
+/// Notably, this also stores an id which is used to tell if
+/// a [WriteHalf] and [ReadHalf] came from the same source
+/// and can therefore be merged in [recombine](Split::recombine).
+///
+/// For more information on how this
+/// is usually created, see [Split]
 #[derive(Debug)]
-pub struct ReadHalf<R: std::io::Read>(R, Option<usize>);
+pub struct ReadHalf<R: std::io::Read>(R, Option<NonZeroUsize>);
 impl<R: std::io::Read> ReadHalf<R> {
+    /// This creates an instance of [ReadHalf] containing
+    /// the provided [Reader](std::io::Read).
+    /// ```
+    /// # use albatrice::split::ReadHalf;
+    /// # use std::collections::VecDeque;
+    /// # fn main() {
+    /// let reader = VecDeque::new();
+    /// let read_half = ReadHalf::new(reader);
+    /// # }
+    /// ```
+    /// Notably, this does not have its id set, however,
+    /// if you do need it set for some reason(I wouldn't
+    /// recommend that) you can by using
+    /// [new_id](ReadHalf::new_id)
     pub const fn new(read: R) -> ReadHalf<R> {
         ReadHalf(read, None)
     }
-    pub const unsafe fn new_id(read: R, id: usize) -> ReadHalf<R> {
+    /// This creates an instance of [ReadHalf] with
+    /// the id set. I can't think of a use case where
+    /// you would need this, but in case you do, this
+    /// is here. Always remember though, this is unsafe
+    /// for a reason. The id is used to determine if
+    /// a [ReadHalf] and [WriteHalf] are from the same
+    /// source for merging purposes. But they don't
+    /// actually get merged, it just takes what was in
+    /// the [ReadHalf] and returns that. Meaning that
+    /// unless they were from the same source, the
+    /// magic trick stops working and could leave
+    /// people confused. So, it uses a unique id system
+    /// to ensure that two halves from different sources
+    /// can NEVER merge.
+    ///
+    /// This will set the id, and
+    /// therefore allow merging so long as both halves
+    /// contain the same type. Don't use this, it is a
+    /// bad idea, unless you are implementing [Split]
+    /// for something. In which case, go right ahead
+    /// because this is the only way for you to do that.
+    pub const unsafe fn new_id(read: R, id: NonZeroUsize) -> ReadHalf<R> {
         ReadHalf(read, Some(id))
     }
-    pub fn unwrap(self) -> Option<R> {
+    /// This gets the [Reader](std::io::Read) stored
+    /// in this, on the condition that it is not
+    /// bound. [ReadHalf]s created through
+    /// [Split] are bound to a [WriteHalf] and cannot
+    /// be gotten through this, causing this to
+    /// return [None]. However, if instead, it was
+    /// created by [new](ReadHalf::new), it will
+    /// return the contained [Reader](std::io::Read)
+    /// ```
+    /// # use albatrice::split::ReadHalf;
+    /// # use std::collections::VecDeque;
+    /// # fn main() {
+    /// let reader = VecDeque::new();
+    /// let read_half = ReadHalf::new(reader);
+    /// let same_reader = read_half.get().unwrap();
+    /// # }
+    /// ```
+    /// In this example, the original reader and the
+    /// extracted reader are one and the same.
+    /// However, if you tried to do this with a
+    /// [ReadHalf] created through [Split], then it
+    /// would panic.
+    pub fn get(self) -> Option<R> {
         if self.1.is_none() {
             return Some(self.0)
         }
         None
     }
-    pub unsafe fn unwrap_unchecked(self) -> R {
+    /// Similar to [get](ReadHalf::get) except that
+    /// it does not check if this is valid to get.
+    /// Notably, it is NOT undefined behavior to call
+    /// this, but it does destroy the guarantee given
+    /// by this and [WriteHalf] in that there is only
+    /// at most 1 [Writer](std::io::Write) and 1
+    /// [Reader](std::io::Read) because you could
+    /// use the extracted value to [Write](std::io::Write)
+    /// when you should not be able to.
+    pub unsafe fn get_unchecked(self) -> R {
         self.0
     }
-    pub const fn get_id(&self) -> Option<usize> {
+    /// This gets the stored id of this instance. The
+    /// id is used to check if a [ReadHalf] and
+    /// [WriteHalf] came from the same source and can
+    /// therefore be merged together to get the source
+    /// back. Realistically, unless you are implementing
+    /// [Split], you shouldn't be using this. If the
+    /// instance was made manually through
+    /// [new](WriteHalf::new), then this will return
+    /// [None] instead of the id.
+    pub const fn get_id(&self) -> Option<NonZeroUsize> {
         self.1
     }
 }
