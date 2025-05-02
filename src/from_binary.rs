@@ -387,11 +387,7 @@ pub trait ToBinary {
 /// ```ignore
 /// impl<T: Binary> Thingamajig { ... }
 /// ```
-pub trait Binary
-where
-    Self: FromBinary + ToBinary,
-{
-}
+pub trait Binary: FromBinary + ToBinary {}
 impl<T: FromBinary + ToBinary> Binary for T {}
 impl<T: ToBinary> ToBinary for &T {
     fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {

@@ -11,11 +11,9 @@ name = "file_comm"
 path = "src/bin/file_comm/main.rs"
 
 [dependencies]
-# abes_nice_procs = { git = "https://github.com/Course-Brains/abes_nice_procs.git", rev = "445599f" }
 
 [dev-dependencies]
 
 [features]
 default = []
 dyn_binary = []
-transmute_binary = []

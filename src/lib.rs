@@ -11,7 +11,7 @@ pub use split::Split;
 pub mod prelude {
     pub use crate::{
         assert_pattern, assert_pattern_ne, debug, debug_println, Binary, FromBinary,
-        ToBinary,
+        ToBinary, Input, input, Split
     };
 }
 
@@ -253,3 +253,144 @@ pub fn manual_reader<R: std::io::Read>(mut read: R) -> std::io::Result<()> {
     }
     Ok(())
 }
+/// A trait which is implemented by all numbers
+/// (All signed integers, all unsigned integers,
+/// and all floats){except not the nightly ones,
+/// fuck that shit}
+///
+/// Pretty much, you can use it as a generic
+/// constraint and get access to all the traits
+/// numbers implement(it's a lot).
+///
+/// If you do not know how to use generic
+/// constraints, I recommend reading the Rust
+/// book.
+///
+/// If you need more specific constraints,
+/// use [Integer], [UnsignedInteger],
+/// [SignedInteger], or [Float]
+pub unsafe trait Number
+where Self:
+    Sized +
+    std::ops::Add +
+    for<'a> std::ops::Add<&'a Self> +
+    std::ops::AddAssign +
+    for<'a> std::ops::AddAssign<&'a Self> +
+    std::ops::Sub +
+    for<'a> std::ops::Sub<&'a Self> +
+    std::ops::SubAssign +
+    for<'a> std::ops::SubAssign<&'a Self> +
+    std::ops::Mul +
+    for<'a> std::ops::Mul<&'a Self> +
+    std::ops::MulAssign +
+    for<'a> std::ops::MulAssign <&'a Self> +
+    std::ops::Div +
+    for<'a> std::ops::Div<&'a Self> +
+    std::ops::DivAssign +
+    for<'a> std::ops::DivAssign<&'a Self> +
+    std::ops::Rem +
+    for<'a> std::ops::Rem<&'a Self> +
+    std::ops::RemAssign +
+    for<'a> std::ops::RemAssign<&'a Self> +
+    std::iter::Product +
+    for<'a> std::iter::Product<&'a Self> +
+    std::iter::Sum +
+    for<'a> std::iter::Sum<&'a Self> +
+    PartialEq +
+    PartialOrd +
+    Clone +
+    Copy +
+    std::fmt::Debug +
+    std::fmt::Display +
+    Default +
+    Binary
+{}
+/// This is a trait which is implemented
+/// by all integers (i8-128 and u8-128)
+/// so that you can use this as a generic
+/// constraint. If you need more information,
+/// look at [Number]
+pub unsafe trait Integer: Number
+where Self:
+    Ord +
+    Eq +
+    std::ops::Shl +
+    std::ops::ShlAssign +
+    std::ops::Shr +
+    std::ops::ShrAssign +
+    std::fmt::Binary +
+    std::ops::BitAnd +
+    for<'a> std::ops::BitAnd<&'a Self> +
+    std::ops::BitAndAssign +
+    for<'a> std::ops::BitAndAssign<&'a Self> +
+    std::ops::BitOr +
+    for<'a> std::ops::BitOr<&'a Self> +
+    std::ops::BitOrAssign +
+    for<'a> std::ops::BitOrAssign<&'a Self> +
+    std::ops::BitXor +
+    for<'a> std::ops::BitXor<&'a Self> +
+    std::ops::BitXorAssign +
+    for<'a> std::ops::BitXorAssign<&'a Self> +
+    std::ops::Not +
+    std::fmt::Octal +
+    std::fmt::UpperHex +
+    std::fmt::UpperExp,
+for<'a> &'a Self:
+    std::ops::BitAnd<Self> +
+    std::ops::BitAnd<&'a Self> +
+    std::ops::BitOr<Self> +
+    std::ops::BitOr<&'a Self> +
+    std::ops::BitXor<Self> +
+    std::ops::BitXor<&'a Self>
+{}
+/// This is a trait which is implemented
+/// by all signed integers (i8-128) for
+/// generic constraints. If you need more
+/// information, look at [Number]
+pub unsafe trait SignedInteger: Integer
+where Self:
+    std::ops::Neg,
+for<'a> &'a Self:
+    std::ops::Neg +
+    std::ops::BitAnd<Self> +
+    std::ops::BitAnd<&'a Self> +
+    std::ops::BitOr<Self> +
+    std::ops::BitOr<&'a Self> +
+    std::ops::BitXor<Self> +
+    std::ops::BitXor<&'a Self>
+{}
+/// This is a trait which is implemented
+/// by all unsigned integers (u8-128) for
+/// generic constraints. If you need more
+/// information, look at [Number]
+pub unsafe trait UnsignedInteger: Integer
+where for<'a> &'a Self:
+    std::ops::BitAnd<Self> +
+    std::ops::BitAnd<&'a Self> +
+    std::ops::BitOr<Self> +
+    std::ops::BitOr<&'a Self> +
+    std::ops::BitXor<Self> +
+    std::ops::BitXor<&'a Self>
+{}
+/// This is a trait which is implemented
+/// by both floats (f32 and f64) for
+/// generic constraints. If you need more
+/// information, look at [Number]
+pub unsafe trait Float: Number
+where Self:
+    std::ops::Neg,
+for<'a> &'a Self:
+    std::ops::Neg
+{}
+macro_rules! impl_help {
+    ($trait:ty, $($type:ty)*) => {
+        $(
+            unsafe impl $trait for $type {}
+        )*
+    }
+}
+impl_help!(Number, u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize f32 f64);
+impl_help!(Integer, u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize);
+impl_help!(SignedInteger, i8 i16 i32 i64 i128 isize);
+impl_help!(UnsignedInteger, u8 u16 u32 u64 u128 usize);
+impl_help!(Float, f32 f64);
