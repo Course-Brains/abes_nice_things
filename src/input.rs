@@ -295,7 +295,7 @@ impl<E> Default for Input<'_, E> {
 ///
 /// This is a convenience function which is equivalent
 /// to using [Input] in the following way:
-/// ```
+/// ```no_run
 /// # use albatrice::Input;
 /// # fn main() {
 /// <Input>::new().get().unwrap()
