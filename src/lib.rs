@@ -139,6 +139,8 @@ pub fn manual_writer<W: std::io::Write>(mut write: W) -> std::io::Result<()> {
                     "i64" => Ok(true),
                     "i128" => Ok(true),
                     "isize"|"is" => Ok(true),
+                    "f32" => Ok(true),
+                    "f64" => Ok(true),
                     "char"|"ch" => Ok(true),
                     "stop" => Ok(true),
                     "bin" => Ok(true),
@@ -158,6 +160,8 @@ pub fn manual_writer<W: std::io::Write>(mut write: W) -> std::io::Result<()> {
             "i64" => input().parse::<i64>().unwrap().to_binary(&mut write)?,
             "i128" => input().parse::<i128>().unwrap().to_binary(&mut write)?,
             "isize"|"is" => input().parse::<isize>().unwrap().to_binary(&mut write)?,
+            "f32" => input().parse::<f32>().unwrap().to_binary(&mut write)?,
+            "f64" => input().parse::<f64>().unwrap().to_binary(&mut write)?,
             "char"|"ch" => {
                 let binding = input();
                 let mut input = binding.chars();
@@ -213,6 +217,8 @@ pub fn manual_reader<R: std::io::Read>(mut read: R) -> std::io::Result<()> {
                     "i64" => Ok(true),
                     "i128" => Ok(true),
                     "isize"|"is" => Ok(true),
+                    "f32" => Ok(true),
+                    "f64" => Ok(true),
                     "char"|"ch" => Ok(true),
                     "stop" => Ok(true),
                     "bin" => Ok(true),
@@ -233,6 +239,8 @@ pub fn manual_reader<R: std::io::Read>(mut read: R) -> std::io::Result<()> {
             "i64" => println!("{}", i64::from_binary(&mut read)?),
             "i128" => println!("{}", i128::from_binary(&mut read)?),
             "isize"|"is" => println!("{}", isize::from_binary(&mut read)?),
+            "f32" => println!("{}", f32::from_binary(&mut read)?),
+            "f64" => println!("{}", f64::from_binary(&mut read)?),
             "bin" => {
                 let byte = u8::from_binary(&mut read)?;
                 print!("{}", "0".repeat(byte.leading_zeros() as usize));
