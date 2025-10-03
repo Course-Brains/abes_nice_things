@@ -4,14 +4,14 @@
 mod from_binary;
 pub use from_binary::{Binary, FromBinary, ToBinary};
 mod input;
-pub use input::{Input, input};
+pub use input::{input, Input};
 pub mod split;
 pub use split::Split;
 
 pub mod prelude {
     pub use crate::{
-        assert_pattern, assert_pattern_ne, debug, debug_println, Binary, FromBinary,
-        ToBinary, Input, input, Split
+        assert_pattern, assert_pattern_ne, debug, debug_println, input, Binary, FromBinary, Input,
+        Split, ToBinary,
     };
 }
 
@@ -82,7 +82,7 @@ macro_rules! assert_pattern_ne {
 ///
 /// It can be used with a block:
 ///```should_panic
-/// # use albatrice::debug;
+/// # use abes_nice_things::debug;
 /// debug!({
 ///     //Code only ran in debug mode
 /// # panic!("Yay!");
@@ -90,20 +90,20 @@ macro_rules! assert_pattern_ne {
 ///```
 /// Or it can be used with an expression:
 ///```should_panic
-/// # use albatrice::debug;
+/// # use abes_nice_things::debug;
 /// debug!(/*expression*/);
 /// # debug!(panic!("I AM HAVING A PANIC ATTACK"));
 ///```
 /// For example:
 ///```
-/// # use albatrice::debug;
+/// # use abes_nice_things::debug;
 /// debug!({
 ///     println!("Yippy!");
 ///     // Any additional code you want
 /// });
 ///```
 ///```
-/// # use albatrice::debug;
+/// # use abes_nice_things::debug;
 /// debug!(println!("Yippy!"));
 /// //     ^^^^^ can only have one thing
 /// //        (note the lack of parenthesis)
@@ -125,44 +125,46 @@ pub fn manual_writer<W: std::io::Write>(mut write: W) -> std::io::Result<()> {
     loop {
         match <Input>::new()
             .msg("What type do you want to write?")
-            .cond(&|string| {
-                match string.as_str() {
-                    "u8" => Ok(true),
-                    "u16" => Ok(true),
-                    "u32" => Ok(true),
-                    "u64" => Ok(true),
-                    "u128" => Ok(true),
-                    "usize"|"us" => Ok(true),
-                    "i8" => Ok(true),
-                    "i16" => Ok(true),
-                    "i32" => Ok(true),
-                    "i64" => Ok(true),
-                    "i128" => Ok(true),
-                    "isize"|"is" => Ok(true),
-                    "f32" => Ok(true),
-                    "f64" => Ok(true),
-                    "char"|"ch" => Ok(true),
-                    "stop" => Ok(true),
-                    "bin" => Ok(true),
-                    "bool"|"bl" => Ok(true),
-                    _ => Ok(false)
-                }
-        }).get().unwrap().as_str() {
+            .cond(&|string| match string.as_str() {
+                "u8" => Ok(true),
+                "u16" => Ok(true),
+                "u32" => Ok(true),
+                "u64" => Ok(true),
+                "u128" => Ok(true),
+                "usize" | "us" => Ok(true),
+                "i8" => Ok(true),
+                "i16" => Ok(true),
+                "i32" => Ok(true),
+                "i64" => Ok(true),
+                "i128" => Ok(true),
+                "isize" | "is" => Ok(true),
+                "f32" => Ok(true),
+                "f64" => Ok(true),
+                "char" | "ch" => Ok(true),
+                "stop" => Ok(true),
+                "bin" => Ok(true),
+                "bool" | "bl" => Ok(true),
+                _ => Ok(false),
+            })
+            .get()
+            .unwrap()
+            .as_str()
+        {
             "u8" => input().parse::<u8>().unwrap().to_binary(&mut write)?,
             "u16" => input().parse::<u16>().unwrap().to_binary(&mut write)?,
             "u32" => input().parse::<u32>().unwrap().to_binary(&mut write)?,
             "u64" => input().parse::<u64>().unwrap().to_binary(&mut write)?,
             "u128" => input().parse::<u128>().unwrap().to_binary(&mut write)?,
-            "usize"|"us" => input().parse::<usize>().unwrap().to_binary(&mut write)?,
+            "usize" | "us" => input().parse::<usize>().unwrap().to_binary(&mut write)?,
             "i8" => input().parse::<i8>().unwrap().to_binary(&mut write)?,
             "i16" => input().parse::<i16>().unwrap().to_binary(&mut write)?,
             "i32" => input().parse::<i32>().unwrap().to_binary(&mut write)?,
             "i64" => input().parse::<i64>().unwrap().to_binary(&mut write)?,
             "i128" => input().parse::<i128>().unwrap().to_binary(&mut write)?,
-            "isize"|"is" => input().parse::<isize>().unwrap().to_binary(&mut write)?,
+            "isize" | "is" => input().parse::<isize>().unwrap().to_binary(&mut write)?,
             "f32" => input().parse::<f32>().unwrap().to_binary(&mut write)?,
             "f64" => input().parse::<f64>().unwrap().to_binary(&mut write)?,
-            "char"|"ch" => {
+            "char" | "ch" => {
                 let binding = input();
                 let mut input = binding.chars();
                 let first = input.next().unwrap();
@@ -172,18 +174,21 @@ pub fn manual_writer<W: std::io::Write>(mut write: W) -> std::io::Result<()> {
                     continue;
                 }
                 // Escaped character
-                let second = input.next().unwrap();
-                match second {
-                    'n' => '\n'.to_binary(&mut write)?,
-                    _ => eprintln!("Invalid escaped character: {second}")
+                let second: String = input.collect();
+                match second.as_str() {
+                    "n" => '\n'.to_binary(&mut write)?,
+                    "t" => '\t'.to_binary(&mut write)?,
+                    "r" => '\r'.to_binary(&mut write)?,
+                    "x1b" => '\x1b'.to_binary(&mut write)?,
+                    _ => eprintln!("Invalid escaped character: {second}"),
                 }
             }
             "bin" => {
                 let mut out = 0_u8;
                 for (index, ch) in input().chars().rev().enumerate() {
                     match ch {
-                        '1' => out += 1<<index,
-                        '0'|'_' => {}
+                        '1' => out += 1 << index,
+                        '0' | '_' => {}
                         _ => {
                             eprintln!("Failed due to invalid binary");
                             break;
@@ -192,9 +197,9 @@ pub fn manual_writer<W: std::io::Write>(mut write: W) -> std::io::Result<()> {
                 }
                 out.to_binary(&mut write)?;
             }
-            "bool"|"bl" => input().parse::<bool>().unwrap().to_binary(&mut write)?,
+            "bool" | "bl" => input().parse::<bool>().unwrap().to_binary(&mut write)?,
             "stop" => break,
-            _ => unreachable!("Fucky wucky!")
+            _ => unreachable!("Fucky wucky!"),
         }
     }
     Ok(())
@@ -203,42 +208,43 @@ pub fn manual_reader<R: std::io::Read>(mut read: R) -> std::io::Result<()> {
     loop {
         match <Input>::new()
             .msg("What type are you reading")
-            .cond(&|string| {
-                match string.as_str() {
-                    "u8" => Ok(true),
-                    "u16" => Ok(true),
-                    "u32" => Ok(true),
-                    "u64" => Ok(true),
-                    "u128" => Ok(true),
-                    "usize"|"us" => Ok(true),
-                    "i8" => Ok(true),
-                    "i16" => Ok(true),
-                    "i32" => Ok(true),
-                    "i64" => Ok(true),
-                    "i128" => Ok(true),
-                    "isize"|"is" => Ok(true),
-                    "f32" => Ok(true),
-                    "f64" => Ok(true),
-                    "char"|"ch" => Ok(true),
-                    "stop" => Ok(true),
-                    "bin" => Ok(true),
-                    "bool"|"bl" => Ok(true),
-                    _ => Ok(false)
-                }
+            .cond(&|string| match string.as_str() {
+                "u8" => Ok(true),
+                "u16" => Ok(true),
+                "u32" => Ok(true),
+                "u64" => Ok(true),
+                "u128" => Ok(true),
+                "usize" | "us" => Ok(true),
+                "i8" => Ok(true),
+                "i16" => Ok(true),
+                "i32" => Ok(true),
+                "i64" => Ok(true),
+                "i128" => Ok(true),
+                "isize" | "is" => Ok(true),
+                "f32" => Ok(true),
+                "f64" => Ok(true),
+                "char" | "ch" => Ok(true),
+                "stop" => Ok(true),
+                "bin" => Ok(true),
+                "bool" | "bl" => Ok(true),
+                _ => Ok(false),
             })
-        .get().unwrap().as_str() {
+            .get()
+            .unwrap()
+            .as_str()
+        {
             "u8" => println!("{}", u8::from_binary(&mut read)?),
             "u16" => println!("{}", u16::from_binary(&mut read)?),
             "u32" => println!("{}", u32::from_binary(&mut read)?),
             "u64" => println!("{}", u64::from_binary(&mut read)?),
             "u128" => println!("{}", u128::from_binary(&mut read)?),
-            "usize"|"us" => println!("{}", usize::from_binary(&mut read)?),
+            "usize" | "us" => println!("{}", usize::from_binary(&mut read)?),
             "i8" => println!("{}", i8::from_binary(&mut read)?),
             "i16" => println!("{}", i16::from_binary(&mut read)?),
             "i32" => println!("{}", i32::from_binary(&mut read)?),
             "i64" => println!("{}", i64::from_binary(&mut read)?),
             "i128" => println!("{}", i128::from_binary(&mut read)?),
-            "isize"|"is" => println!("{}", isize::from_binary(&mut read)?),
+            "isize" | "is" => println!("{}", isize::from_binary(&mut read)?),
             "f32" => println!("{}", f32::from_binary(&mut read)?),
             "f64" => println!("{}", f64::from_binary(&mut read)?),
             "bin" => {
@@ -250,13 +256,16 @@ pub fn manual_reader<R: std::io::Read>(mut read: R) -> std::io::Result<()> {
                 let ch = char::from_binary(&mut read)?;
                 match ch {
                     '\n' => println!("newline"),
+                    '\t' => println!("tab"),
+                    '\r' => println!("carriage return"),
+                    '\x1b' => println!("x1b"),
                     ' ' => println!("<space>"),
                     _ => println!("{ch}"),
                 }
             }
-            "bool"|"bl" => println!("{}", bool::from_binary(&mut read)?),
+            "bool" | "bl" => println!("{}", bool::from_binary(&mut read)?),
             "stop" => break,
-            _ => unreachable!("Fucky wucky!")
+            _ => unreachable!("Fucky wucky!"),
         }
     }
     Ok(())
@@ -278,118 +287,120 @@ pub fn manual_reader<R: std::io::Read>(mut read: R) -> std::io::Result<()> {
 /// use [Integer], [UnsignedInteger],
 /// [SignedInteger], or [Float]
 pub unsafe trait Number
-where Self:
-    Sized +
-    std::ops::Add +
-    for<'a> std::ops::Add<&'a Self> +
-    std::ops::AddAssign +
-    for<'a> std::ops::AddAssign<&'a Self> +
-    std::ops::Sub +
-    for<'a> std::ops::Sub<&'a Self> +
-    std::ops::SubAssign +
-    for<'a> std::ops::SubAssign<&'a Self> +
-    std::ops::Mul +
-    for<'a> std::ops::Mul<&'a Self> +
-    std::ops::MulAssign +
-    for<'a> std::ops::MulAssign <&'a Self> +
-    std::ops::Div +
-    for<'a> std::ops::Div<&'a Self> +
-    std::ops::DivAssign +
-    for<'a> std::ops::DivAssign<&'a Self> +
-    std::ops::Rem +
-    for<'a> std::ops::Rem<&'a Self> +
-    std::ops::RemAssign +
-    for<'a> std::ops::RemAssign<&'a Self> +
-    std::iter::Product +
-    for<'a> std::iter::Product<&'a Self> +
-    std::iter::Sum +
-    for<'a> std::iter::Sum<&'a Self> +
-    PartialEq +
-    PartialOrd +
-    Clone +
-    Copy +
-    std::fmt::Debug +
-    std::fmt::Display +
-    Default +
-    Binary
-{}
+where
+    Self: Sized
+        + std::ops::Add
+        + for<'a> std::ops::Add<&'a Self>
+        + std::ops::AddAssign
+        + for<'a> std::ops::AddAssign<&'a Self>
+        + std::ops::Sub
+        + for<'a> std::ops::Sub<&'a Self>
+        + std::ops::SubAssign
+        + for<'a> std::ops::SubAssign<&'a Self>
+        + std::ops::Mul
+        + for<'a> std::ops::Mul<&'a Self>
+        + std::ops::MulAssign
+        + for<'a> std::ops::MulAssign<&'a Self>
+        + std::ops::Div
+        + for<'a> std::ops::Div<&'a Self>
+        + std::ops::DivAssign
+        + for<'a> std::ops::DivAssign<&'a Self>
+        + std::ops::Rem
+        + for<'a> std::ops::Rem<&'a Self>
+        + std::ops::RemAssign
+        + for<'a> std::ops::RemAssign<&'a Self>
+        + std::iter::Product
+        + for<'a> std::iter::Product<&'a Self>
+        + std::iter::Sum
+        + for<'a> std::iter::Sum<&'a Self>
+        + PartialEq
+        + PartialOrd
+        + Clone
+        + Copy
+        + std::fmt::Debug
+        + std::fmt::Display
+        + Default
+        + Binary,
+{
+}
 /// This is a trait which is implemented
 /// by all integers (i8-128 and u8-128)
 /// so that you can use this as a generic
 /// constraint. If you need more information,
 /// look at [Number]
 pub unsafe trait Integer: Number
-where Self:
-    Ord +
-    Eq +
-    std::ops::Shl +
-    std::ops::ShlAssign +
-    std::ops::Shr +
-    std::ops::ShrAssign +
-    std::fmt::Binary +
-    std::ops::BitAnd +
-    for<'a> std::ops::BitAnd<&'a Self> +
-    std::ops::BitAndAssign +
-    for<'a> std::ops::BitAndAssign<&'a Self> +
-    std::ops::BitOr +
-    for<'a> std::ops::BitOr<&'a Self> +
-    std::ops::BitOrAssign +
-    for<'a> std::ops::BitOrAssign<&'a Self> +
-    std::ops::BitXor +
-    for<'a> std::ops::BitXor<&'a Self> +
-    std::ops::BitXorAssign +
-    for<'a> std::ops::BitXorAssign<&'a Self> +
-    std::ops::Not +
-    std::fmt::Octal +
-    std::fmt::UpperHex +
-    std::fmt::UpperExp,
-for<'a> &'a Self:
-    std::ops::BitAnd<Self> +
-    std::ops::BitAnd<&'a Self> +
-    std::ops::BitOr<Self> +
-    std::ops::BitOr<&'a Self> +
-    std::ops::BitXor<Self> +
-    std::ops::BitXor<&'a Self>
-{}
+where
+    Self: Ord
+        + Eq
+        + std::ops::Shl
+        + std::ops::ShlAssign
+        + std::ops::Shr
+        + std::ops::ShrAssign
+        + std::fmt::Binary
+        + std::ops::BitAnd
+        + for<'a> std::ops::BitAnd<&'a Self>
+        + std::ops::BitAndAssign
+        + for<'a> std::ops::BitAndAssign<&'a Self>
+        + std::ops::BitOr
+        + for<'a> std::ops::BitOr<&'a Self>
+        + std::ops::BitOrAssign
+        + for<'a> std::ops::BitOrAssign<&'a Self>
+        + std::ops::BitXor
+        + for<'a> std::ops::BitXor<&'a Self>
+        + std::ops::BitXorAssign
+        + for<'a> std::ops::BitXorAssign<&'a Self>
+        + std::ops::Not
+        + std::fmt::Octal
+        + std::fmt::UpperHex
+        + std::fmt::UpperExp,
+    for<'a> &'a Self: std::ops::BitAnd<Self>
+        + std::ops::BitAnd<&'a Self>
+        + std::ops::BitOr<Self>
+        + std::ops::BitOr<&'a Self>
+        + std::ops::BitXor<Self>
+        + std::ops::BitXor<&'a Self>,
+{
+}
 /// This is a trait which is implemented
 /// by all signed integers (i8-128) for
 /// generic constraints. If you need more
 /// information, look at [Number]
 pub unsafe trait SignedInteger: Integer
-where Self:
-    std::ops::Neg,
-for<'a> &'a Self:
-    std::ops::Neg +
-    std::ops::BitAnd<Self> +
-    std::ops::BitAnd<&'a Self> +
-    std::ops::BitOr<Self> +
-    std::ops::BitOr<&'a Self> +
-    std::ops::BitXor<Self> +
-    std::ops::BitXor<&'a Self>
-{}
+where
+    Self: std::ops::Neg,
+    for<'a> &'a Self: std::ops::Neg
+        + std::ops::BitAnd<Self>
+        + std::ops::BitAnd<&'a Self>
+        + std::ops::BitOr<Self>
+        + std::ops::BitOr<&'a Self>
+        + std::ops::BitXor<Self>
+        + std::ops::BitXor<&'a Self>,
+{
+}
 /// This is a trait which is implemented
 /// by all unsigned integers (u8-128) for
 /// generic constraints. If you need more
 /// information, look at [Number]
 pub unsafe trait UnsignedInteger: Integer
-where for<'a> &'a Self:
-    std::ops::BitAnd<Self> +
-    std::ops::BitAnd<&'a Self> +
-    std::ops::BitOr<Self> +
-    std::ops::BitOr<&'a Self> +
-    std::ops::BitXor<Self> +
-    std::ops::BitXor<&'a Self>
-{}
+where
+    for<'a> &'a Self: std::ops::BitAnd<Self>
+        + std::ops::BitAnd<&'a Self>
+        + std::ops::BitOr<Self>
+        + std::ops::BitOr<&'a Self>
+        + std::ops::BitXor<Self>
+        + std::ops::BitXor<&'a Self>,
+{
+}
 /// This is a trait which is implemented
 /// by both floats (f32 and f64) for
 /// generic constraints. If you need more
 /// information, look at [Number]
 pub unsafe trait Float: Number
-where Self:
-    std::ops::Neg,
-for<'a> &'a Self:
-    std::ops::Neg
-{}
+where
+    Self: std::ops::Neg,
+    for<'a> &'a Self: std::ops::Neg,
+{
+}
 macro_rules! impl_help {
     ($trait:ty, $($type:ty)*) => {
         $(

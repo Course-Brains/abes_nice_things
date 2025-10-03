@@ -1,4 +1,4 @@
-use std::io::{Read, Write, Error, ErrorKind};
+use std::io::{Error, ErrorKind, Read, Write};
 use std::ops::Deref;
 /// This trait is designed to allow for easier conversion from binary
 /// in a defined and consistent way.
@@ -12,7 +12,7 @@ use std::ops::Deref;
 /// Because [Readers](Read) will have the cursor move after
 /// each read, the actual implementation is very easy.
 /// ```
-/// # use albatrice::FromBinary;
+/// # use abes_nice_things::FromBinary;
 /// use std::io::Read;
 /// struct Data {
 ///     num: i64,
@@ -51,7 +51,7 @@ use std::ops::Deref;
 /// This is most simply shown with enums that do not contain
 /// data and just differentiate which variant is being used.
 /// ```
-/// # use albatrice::FromBinary;
+/// # use abes_nice_things::FromBinary;
 /// # use std::io::Read;
 /// enum Example {
 ///     Variant1,
@@ -82,14 +82,14 @@ use std::ops::Deref;
 /// Notably, you don't actually have to conform to how I
 /// show which variant is being used, the only thing that
 /// matters is that it is able to determine which is being
-/// used, and you do the opposite in order to convert 
+/// used, and you do the opposite in order to convert
 /// [to binary](ToBinary::to_binary).
 ///
 /// While this works for some enums, it does not work if
 /// they have data in their variants. The way we get around
 /// that is by just by converting all their data [to binary](ToBinary::to_binary).
 /// ```
-/// # use albatrice::FromBinary;
+/// # use abes_nice_things::FromBinary;
 /// # use std::io::Read;
 /// enum Example<T: FromBinary> {
 ///     EmptyVariant,
@@ -138,7 +138,7 @@ pub trait FromBinary {
     /// # Examples
     /// Reading from a file:
     /// ```no_run
-    /// # use albatrice::FromBinary;
+    /// # use abes_nice_things::FromBinary;
     /// use std::io::Read;
     /// use std::fs::File;
     /// #[derive(Debug)]
@@ -159,7 +159,7 @@ pub trait FromBinary {
     /// ```
     /// Reading from a [VecDeque](std::collections::VecDeque) using the same Data struct:
     /// ```no_run
-    /// # use albatrice::FromBinary;
+    /// # use abes_nice_things::FromBinary;
     /// use std::io::Read;
     /// use std::collections::VecDeque;
     /// # #[derive(Debug)]
@@ -181,7 +181,7 @@ pub trait FromBinary {
     /// ```
     /// Reading from a [TcpStream](std::net::TcpStream)
     /// ```no_run
-    /// # use albatrice::FromBinary;
+    /// # use abes_nice_things::FromBinary;
     /// use std::io::Read;
     /// use std::net::TcpStream;
     /// # #[derive(Debug)]
@@ -210,7 +210,9 @@ pub trait FromBinary {
     /// no extra code has to be written.
     ///
     /// For more infomation see the [trait docs](FromBinary)
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> where Self: Sized;
+    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error>
+    where
+        Self: Sized;
 }
 /// This trait is designed to allow for easier conversion to binary
 /// Long gone shall the days be of manually using [Write]
@@ -223,7 +225,7 @@ pub trait FromBinary {
 /// [ToBinary], you can just call [to_binary](ToBinary::to_binary)
 /// on its individual fields.
 /// ```
-/// # use albatrice::ToBinary;
+/// # use abes_nice_things::ToBinary;
 /// # use std::io::Write;
 /// struct MyStruct {
 ///     field1: String,
@@ -262,7 +264,7 @@ pub trait FromBinary {
 /// in [FromBinary] to identify which variant
 /// was stored.
 /// ```
-/// # use albatrice::ToBinary;
+/// # use abes_nice_things::ToBinary;
 /// # use std::io::Write;
 /// enum Example {
 ///     Variant1,
@@ -291,7 +293,7 @@ pub trait FromBinary {
 ///
 /// More complicated example:
 /// ```
-/// # use albatrice::ToBinary;
+/// # use abes_nice_things::ToBinary;
 /// # use std::io::Write;
 /// enum Example<T: ToBinary> {
 ///     EmptyVariant,
@@ -341,7 +343,7 @@ pub trait ToBinary {
     ///
     /// To [File](std::fs::File):
     /// ```no_run
-    /// # use albatrice::ToBinary;
+    /// # use abes_nice_things::ToBinary;
     /// # use std::io::Write;
     /// # struct Data(());
     /// # impl ToBinary for Data {
@@ -358,7 +360,7 @@ pub trait ToBinary {
     /// ```
     /// To [VecDeque](std::collections::VecDeque)
     /// ```
-    /// # use albatrice::ToBinary;
+    /// # use abes_nice_things::ToBinary;
     /// # use std::collections::VecDeque;
     /// # fn main() {
     /// # let data = "Controlling robots is my game";
@@ -459,7 +461,10 @@ impl FromBinary for std::primitive::char {
     fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
         match char::from_u32(u32::from_binary(binary)?) {
             Some(character) => Ok(character),
-            None => Err(Error::new(ErrorKind::InvalidData, "Could not get char from u8"))
+            None => Err(Error::new(
+                ErrorKind::InvalidData,
+                "Could not get char from u8",
+            )),
         }
     }
 }
@@ -475,9 +480,10 @@ impl FromBinary for bool {
         match buf[0] {
             0b0000_0000 => Ok(false),
             0b0000_0001 => Ok(true),
-            _ => {
-                Err(Error::new(ErrorKind::InvalidData,"Could not get bool from u8"))
-            }
+            _ => Err(Error::new(
+                ErrorKind::InvalidData,
+                "Could not get bool from u8",
+            )),
         }
     }
 }
@@ -498,8 +504,8 @@ impl FromBinary for String {
             Ok(string) => Ok(string),
             Err(_) => Err(Error::new(
                 ErrorKind::InvalidData,
-                "Could not get String from [u8]"
-            ))
+                "Could not get String from [u8]",
+            )),
         }
     }
 }
@@ -558,10 +564,7 @@ impl<T: FromBinary + std::hash::Hash + Eq, S: FromBinary + std::hash::BuildHashe
         // state
         // values
         let cap = usize::from_binary(binary)?;
-        let mut out = Self::with_capacity_and_hasher(
-            cap,
-            S::from_binary(binary)?
-        );
+        let mut out = Self::with_capacity_and_hasher(cap, S::from_binary(binary)?);
         for _ in 0..cap {
             out.insert(T::from_binary(binary)?);
         }
@@ -598,17 +601,16 @@ impl<
     // data: [(K, V)]
     fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
         let cap = usize::from_binary(binary)?;
-        let mut out = Self::with_capacity_and_hasher(
-            cap,
-            S::from_binary(binary)?
-        );
+        let mut out = Self::with_capacity_and_hasher(cap, S::from_binary(binary)?);
         for _ in 0..cap {
             out.insert(K::from_binary(binary)?, V::from_binary(binary)?);
         }
         Ok(out)
     }
 }
-impl<K: FromBinary + std::hash::Hash + Eq, V: FromBinary> FromBinary for std::collections::HashMap<K, V> {
+impl<K: FromBinary + std::hash::Hash + Eq, V: FromBinary> FromBinary
+    for std::collections::HashMap<K, V>
+{
     fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
         Ok(Vec::from_binary(binary)?.into_iter().collect())
     }
@@ -659,15 +661,12 @@ impl<K: ToBinary, V: ToBinary> ToBinary for std::collections::BTreeMap<K, V> {
 }
 impl FromBinary for std::alloc::Layout {
     fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
-        match Self::from_size_align(
-            usize::from_binary(binary)?,
-            usize::from_binary(binary)?
-        ) {
+        match Self::from_size_align(usize::from_binary(binary)?, usize::from_binary(binary)?) {
             Ok(layout) => Ok(layout),
             Err(_) => Err(Error::new(
                 ErrorKind::InvalidData,
-                "Could not get Layout from binary"
-            ))
+                "Could not get Layout from binary",
+            )),
         }
     }
 }
@@ -709,7 +708,10 @@ impl<T: FromBinary, E: FromBinary> FromBinary for Result<T, E> {
         match u8::from_binary(binary)? {
             0 => Ok(Ok(T::from_binary(binary)?)),
             1 => Ok(Err(E::from_binary(binary)?)),
-            _ => Err(Error::new(ErrorKind::InvalidData, "Failed to get Result from binary"))
+            _ => Err(Error::new(
+                ErrorKind::InvalidData,
+                "Failed to get Result from binary",
+            )),
         }
     }
 }
@@ -729,10 +731,14 @@ impl<T: ToBinary, E: ToBinary> ToBinary for Result<T, E> {
     }
 }
 impl FromBinary for () {
-    fn from_binary(_binary: &mut dyn Read) -> Result<Self, Error> { Ok(()) }
+    fn from_binary(_binary: &mut dyn Read) -> Result<Self, Error> {
+        Ok(())
+    }
 }
 impl ToBinary for () {
-    fn to_binary(&self, _binary: &mut dyn Write) -> Result<(), Error> { Ok(()) }
+    fn to_binary(&self, _binary: &mut dyn Write) -> Result<(), Error> {
+        Ok(())
+    }
 }
 impl<T: FromBinary, U: FromBinary> FromBinary for (T, U) {
     fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
@@ -807,8 +813,8 @@ impl FromBinary for std::cmp::Ordering {
             2 => Ok(std::cmp::Ordering::Greater),
             _ => Err(Error::new(
                 ErrorKind::InvalidData,
-                "Failed to get Ordering from binary")
-            ),
+                "Failed to get Ordering from binary",
+            )),
         }
     }
 }
@@ -855,9 +861,16 @@ impl ToBinary for std::net::Ipv6Addr {
 impl FromBinary for std::net::IpAddr {
     fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
         match u8::from_binary(binary)? {
-            0 => Ok(std::net::IpAddr::V4(std::net::Ipv4Addr::from_binary(binary)?)),
-            1 => Ok(std::net::IpAddr::V6(std::net::Ipv6Addr::from_binary(binary)?)),
-            _ => Err(Error::new(ErrorKind::InvalidData, "Failed to get IpAddr from binary")),
+            0 => Ok(std::net::IpAddr::V4(std::net::Ipv4Addr::from_binary(
+                binary,
+            )?)),
+            1 => Ok(std::net::IpAddr::V6(std::net::Ipv6Addr::from_binary(
+                binary,
+            )?)),
+            _ => Err(Error::new(
+                ErrorKind::InvalidData,
+                "Failed to get IpAddr from binary",
+            )),
         }
     }
 }
@@ -913,11 +926,15 @@ impl ToBinary for std::net::SocketAddrV6 {
 impl FromBinary for std::net::SocketAddr {
     fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
         match u8::from_binary(binary)? {
-            0 => Ok(std::net::SocketAddr::V4(std::net::SocketAddrV4::from_binary(binary)?)),
-            1 => Ok(std::net::SocketAddr::V6(std::net::SocketAddrV6::from_binary(binary)?)),
+            0 => Ok(std::net::SocketAddr::V4(
+                std::net::SocketAddrV4::from_binary(binary)?,
+            )),
+            1 => Ok(std::net::SocketAddr::V6(
+                std::net::SocketAddrV6::from_binary(binary)?,
+            )),
             _ => Err(Error::new(
                 ErrorKind::InvalidData,
-                "Could not get SocketAddr from binary"
+                "Could not get SocketAddr from binary",
             )),
         }
     }
@@ -979,9 +996,9 @@ impl FromBinary for std::io::ErrorKind {
             36 => Ok(Self::OutOfMemory),
             37 => Ok(Self::Other),
             _ => Err(Error::new(
-               ErrorKind::InvalidData,
-               "Could not get ErrorKind from binary"
-            ))
+                ErrorKind::InvalidData,
+                "Could not get ErrorKind from binary",
+            )),
         }
     }
 }
@@ -990,122 +1007,84 @@ impl ToBinary for std::io::ErrorKind {
         // I can't use a match statement because it is non-exaustive
         if let Self::NotFound = self {
             Ok(0_u8.to_binary(binary)?)
-        }
-        else if let Self::PermissionDenied = self {
+        } else if let Self::PermissionDenied = self {
             Ok(1_u8.to_binary(binary)?)
-        }
-        else if let Self::ConnectionRefused = self {
+        } else if let Self::ConnectionRefused = self {
             Ok(2_u8.to_binary(binary)?)
-        }
-        else if let Self::ConnectionReset = self {
+        } else if let Self::ConnectionReset = self {
             Ok(3_u8.to_binary(binary)?)
-        }
-        else if let Self::HostUnreachable = self {
+        } else if let Self::HostUnreachable = self {
             Ok(4_u8.to_binary(binary)?)
-        }
-        else if let Self::NetworkUnreachable = self {
+        } else if let Self::NetworkUnreachable = self {
             Ok(5_u8.to_binary(binary)?)
-        }
-        else if let Self::ConnectionAborted = self {
+        } else if let Self::ConnectionAborted = self {
             Ok(6_u8.to_binary(binary)?)
-        }
-        else if let Self::NotConnected = self {
+        } else if let Self::NotConnected = self {
             Ok(7_u8.to_binary(binary)?)
-        }
-        else if let Self::AddrInUse = self {
+        } else if let Self::AddrInUse = self {
             Ok(8_u8.to_binary(binary)?)
-        }
-        else if let Self::AddrNotAvailable = self {
+        } else if let Self::AddrNotAvailable = self {
             Ok(9_u8.to_binary(binary)?)
-        }
-        else if let Self::NetworkDown = self {
+        } else if let Self::NetworkDown = self {
             Ok(10_u8.to_binary(binary)?)
-        }
-        else if let Self::BrokenPipe = self {
+        } else if let Self::BrokenPipe = self {
             Ok(11_u8.to_binary(binary)?)
-        }
-        else if let Self::AlreadyExists = self {
+        } else if let Self::AlreadyExists = self {
             Ok(12_u8.to_binary(binary)?)
-        }
-        else if let Self::WouldBlock = self {
+        } else if let Self::WouldBlock = self {
             Ok(13_u8.to_binary(binary)?)
-        }
-        else if let Self::NotADirectory = self {
+        } else if let Self::NotADirectory = self {
             Ok(14_u8.to_binary(binary)?)
-        }
-        else if let Self::IsADirectory = self {
+        } else if let Self::IsADirectory = self {
             Ok(15_u8.to_binary(binary)?)
-        }
-        else if let Self::DirectoryNotEmpty = self {
+        } else if let Self::DirectoryNotEmpty = self {
             Ok(16_u8.to_binary(binary)?)
-        }
-        else if let Self::ReadOnlyFilesystem = self {
+        } else if let Self::ReadOnlyFilesystem = self {
             Ok(17_u8.to_binary(binary)?)
-        }
-        else if let Self::StaleNetworkFileHandle = self {
+        } else if let Self::StaleNetworkFileHandle = self {
             Ok(18_u8.to_binary(binary)?)
-        }
-        else if let Self::InvalidInput = self {
+        } else if let Self::InvalidInput = self {
             Ok(19_u8.to_binary(binary)?)
-        }
-        else if let Self::InvalidData = self {
+        } else if let Self::InvalidData = self {
             Ok(20_u8.to_binary(binary)?)
-        }
-        else if let Self::TimedOut = self {
+        } else if let Self::TimedOut = self {
             Ok(21_u8.to_binary(binary)?)
-        }
-        else if let Self::WriteZero = self {
+        } else if let Self::WriteZero = self {
             Ok(22_u8.to_binary(binary)?)
-        }
-        else if let Self::StorageFull = self {
+        } else if let Self::StorageFull = self {
             Ok(23_u8.to_binary(binary)?)
-        }
-        else if let Self::NotSeekable = self {
+        } else if let Self::NotSeekable = self {
             Ok(24_u8.to_binary(binary)?)
-        }
-        else if let Self::QuotaExceeded = self {
+        } else if let Self::QuotaExceeded = self {
             Ok(25_u8.to_binary(binary)?)
-        }
-        else if let Self::FileTooLarge = self {
+        } else if let Self::FileTooLarge = self {
             Ok(26_u8.to_binary(binary)?)
-        }
-        else if let Self::ResourceBusy = self {
+        } else if let Self::ResourceBusy = self {
             Ok(27_u8.to_binary(binary)?)
-        }
-        else if let Self::ExecutableFileBusy = self {
+        } else if let Self::ExecutableFileBusy = self {
             Ok(28_u8.to_binary(binary)?)
-        }
-        else if let Self::Deadlock = self {
+        } else if let Self::Deadlock = self {
             Ok(29_u8.to_binary(binary)?)
-        }
-        else if let Self::CrossesDevices = self {
+        } else if let Self::CrossesDevices = self {
             Ok(30_u8.to_binary(binary)?)
-        }
-        else if let Self::TooManyLinks = self {
+        } else if let Self::TooManyLinks = self {
             Ok(31_u8.to_binary(binary)?)
-        }
-        else if let Self::ArgumentListTooLong = self {
+        } else if let Self::ArgumentListTooLong = self {
             Ok(32_u8.to_binary(binary)?)
-        }
-        else if let Self::Interrupted = self {
+        } else if let Self::Interrupted = self {
             Ok(33_u8.to_binary(binary)?)
-        }
-        else if let Self::Unsupported = self {
+        } else if let Self::Unsupported = self {
             Ok(34_u8.to_binary(binary)?)
-        }
-        else if let Self::UnexpectedEof = self {
+        } else if let Self::UnexpectedEof = self {
             Ok(35_u8.to_binary(binary)?)
-        }
-        else if let Self::OutOfMemory = self {
+        } else if let Self::OutOfMemory = self {
             Ok(36_u8.to_binary(binary)?)
-        }
-        else if let Self::Other = self {
+        } else if let Self::Other = self {
             Ok(37_u8.to_binary(binary)?)
-        }
-        else {
+        } else {
             Err(Error::new(
                 ErrorKind::Unsupported,
-                "This version cannot handle that ErrorKind variant"
+                "This version cannot handle that ErrorKind variant",
             ))
         }
     }
@@ -1118,7 +1097,7 @@ impl<T: FromBinary> FromBinary for std::ops::Bound<T> {
             2 => Ok(std::ops::Bound::Unbounded),
             _ => Err(Error::new(
                 ErrorKind::InvalidData,
-                "Could not get Bound from binary"
+                "Could not get Bound from binary",
             )),
         }
     }
@@ -1192,7 +1171,10 @@ impl<T: ToBinary> ToBinary for std::ops::RangeToInclusive<T> {
 }
 impl FromBinary for std::time::Duration {
     fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
-        Ok(Self::new(u64::from_binary(binary)?, u32::from_binary(binary)?))
+        Ok(Self::new(
+            u64::from_binary(binary)?,
+            u32::from_binary(binary)?,
+        ))
     }
 }
 impl ToBinary for std::time::Duration {
@@ -1209,8 +1191,8 @@ impl FromBinary for std::backtrace::BacktraceStatus {
             2 => Ok(Self::Unsupported),
             _ => Err(Error::new(
                 ErrorKind::InvalidData,
-                "Failed to get BacktraceStatus from binary"
-            ))
+                "Failed to get BacktraceStatus from binary",
+            )),
         }
     }
 }
@@ -1222,8 +1204,8 @@ impl ToBinary for std::backtrace::BacktraceStatus {
             Self::Unsupported => 2_u8.to_binary(binary),
             _ => Err(Error::new(
                 ErrorKind::Unsupported,
-                "This cannot convert this recent of a BacktraceStatus to binary"
-            ))
+                "This cannot convert this recent of a BacktraceStatus to binary",
+            )),
         }
     }
 }
@@ -1236,9 +1218,7 @@ impl<T: ToBinary> ToBinary for std::cell::Cell<T> {
     fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
         // It is safe actually because we never mutate the anything,
         // meaning that it is essentially the same as just &T
-        unsafe {
-            (*self.as_ptr()).to_binary(binary)
-        }
+        unsafe { (*self.as_ptr()).to_binary(binary) }
     }
 }
 impl<T: FromBinary> FromBinary for std::cell::OnceCell<T> {
@@ -1270,8 +1250,8 @@ impl FromBinary for std::ffi::CString {
             Ok(cstring) => Ok(cstring),
             Err(_) => Err(Error::new(
                 ErrorKind::InvalidData,
-                "Failed to get CString from binary"
-            ))
+                "Failed to get CString from binary",
+            )),
         }
     }
 }
@@ -1291,7 +1271,9 @@ impl<T> FromBinary for std::marker::PhantomData<T> {
     }
 }
 impl<T> ToBinary for std::marker::PhantomData<T> {
-    fn to_binary(&self, _binary: &mut dyn Write) -> Result<(), Error> { Ok(()) }
+    fn to_binary(&self, _binary: &mut dyn Write) -> Result<(), Error> {
+        Ok(())
+    }
 }
 impl FromBinary for std::marker::PhantomPinned {
     fn from_binary(_binary: &mut dyn Read) -> Result<Self, Error> {
@@ -1299,7 +1281,9 @@ impl FromBinary for std::marker::PhantomPinned {
     }
 }
 impl ToBinary for std::marker::PhantomPinned {
-    fn to_binary(&self, _binary: &mut dyn Write) -> Result<(), Error> { Ok(()) }
+    fn to_binary(&self, _binary: &mut dyn Write) -> Result<(), Error> {
+        Ok(())
+    }
 }
 impl<T: FromBinary> FromBinary for std::mem::ManuallyDrop<T> {
     fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
@@ -1318,8 +1302,8 @@ impl<B: FromBinary, C: FromBinary> FromBinary for std::ops::ControlFlow<B, C> {
             1 => Ok(Self::Continue(C::from_binary(binary)?)),
             _ => Err(Error::new(
                 ErrorKind::InvalidData,
-                "Failed to get ControlFlow from binary"
-            ))
+                "Failed to get ControlFlow from binary",
+            )),
         }
     }
 }
@@ -1389,8 +1373,8 @@ impl<T: ToBinary> ToBinary for std::sync::Mutex<T> {
             Ok(lock) => lock.to_binary(binary),
             Err(_) => Err(Error::new(
                 ErrorKind::Other,
-                "Could not convert Mutex to binary because it is poisoned"
-            ))
+                "Could not convert Mutex to binary because it is poisoned",
+            )),
         }
     }
 }
@@ -1437,8 +1421,8 @@ impl FromBinary for std::sync::atomic::Ordering {
             4 => Ok(Self::SeqCst),
             _ => Err(Error::new(
                 ErrorKind::InvalidData,
-                "Failed to get atomic::Ordering from binary"
-            ))
+                "Failed to get atomic::Ordering from binary",
+            )),
         }
     }
 }
@@ -1452,7 +1436,8 @@ impl ToBinary for std::sync::atomic::Ordering {
             Self::SeqCst => 4_u8.to_binary(binary),
             _ => Err(Error::new(
                 ErrorKind::Unsupported,
-                "This cannot convert an atomic::Ordering this recent to binary")),
+                "This cannot convert an atomic::Ordering this recent to binary",
+            )),
         }
     }
 }

@@ -1,6 +1,6 @@
 use crate::{FromBinary, ToBinary};
-use std::sync::atomic::AtomicUsize;
 use std::num::NonZeroUsize;
+use std::sync::atomic::AtomicUsize;
 static SPLITS: AtomicUsize = AtomicUsize::new(1);
 type Halves<T> = (ReadHalf<T>, WriteHalf<T>);
 /// This is a trait designed to [split](Split::split) things that
@@ -25,7 +25,10 @@ type Halves<T> = (ReadHalf<T>, WriteHalf<T>);
 /// In relation to those, [Split](Split::split) simply creates them. And
 /// [recombine](Split::recombine) consumes both halves to get the original value.
 
-pub trait Split: std::io::Read + std::io::Write where Self: Sized {
+pub trait Split: std::io::Read + std::io::Write
+where
+    Self: Sized,
+{
     /// This splits something which implements both [Read](std::io::Read) and
     /// [Write](std::io::Write) into two different halves such that one will
     /// [write](std::io::Write::write) in place of the original, and the
@@ -49,7 +52,7 @@ pub trait Split: std::io::Read + std::io::Write where Self: Sized {
     ///
     /// For example:
     /// ```no_run
-    /// # use albatrice::Split;
+    /// # use abes_nice_things::Split;
     /// # use std::fs::File;
     /// # fn main() {
     /// let original = File::open("~/.vimrc").unwrap();
@@ -63,7 +66,7 @@ pub trait Split: std::io::Read + std::io::Write where Self: Sized {
     /// source, if they are different, [recombine](Split::recombine) will
     /// return [None].
     /// ```no_run
-    /// # use albatrice::Split;
+    /// # use abes_nice_things::Split;
     /// # use std::fs::File;
     /// # fn main() {
     /// let original1 = File::open("~/.vimrc").unwrap();
@@ -80,7 +83,7 @@ pub trait Split: std::io::Read + std::io::Write where Self: Sized {
     /// In order to check if two halves are from the same source, they
     /// implement [PartialEq] and can be compared to one another:
     /// ```no_run
-    /// # use albatrice::Split;
+    /// # use abes_nice_things::Split;
     /// # use std::fs::File;
     /// # fn main() {
     /// let original1 = File::open("~/.vimrc").unwrap();
@@ -105,18 +108,17 @@ pub trait Split: std::io::Read + std::io::Write where Self: Sized {
             // They are from the same source, yay!
             true => Some(read.0),
             // They are not from the same source, booooooooo
-            false => None
+            false => None,
         }
     }
 }
 impl Split for std::net::TcpStream {
     fn split(self) -> Result<(ReadHalf<Self>, WriteHalf<Self>), std::io::Error> {
-        let id = NonZeroUsize::new(
-            SPLITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-        ).unwrap();
+        let id =
+            NonZeroUsize::new(SPLITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst)).unwrap();
         Ok((
             ReadHalf(self.try_clone()?, Some(id)),
-            WriteHalf(self, Some(id))
+            WriteHalf(self, Some(id)),
         ))
     }
 }
@@ -124,12 +126,11 @@ impl Split for std::fs::File {
     fn split(self) -> Result<(ReadHalf<Self>, WriteHalf<Self>), std::io::Error> {
         // Intentionally not accounting for Seek because
         // it is not independant from Reading and Writing
-        let id = NonZeroUsize::new(
-            SPLITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-        ).unwrap();
+        let id =
+            NonZeroUsize::new(SPLITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst)).unwrap();
         Ok((
             ReadHalf(self.try_clone()?, Some(id)),
-            WriteHalf(self, Some(id))
+            WriteHalf(self, Some(id)),
         ))
     }
 }
@@ -142,7 +143,7 @@ impl Split for std::fs::File {
 /// Most of the time, this is created by calling [split](Split::split)
 /// however it can be created manually.
 /// ```
-/// # use albatrice::split::WriteHalf;
+/// # use abes_nice_things::split::WriteHalf;
 /// # use std::collections::VecDeque;
 /// # fn main() {
 /// let vec_deque = VecDeque::new();
@@ -153,7 +154,7 @@ impl Split for std::fs::File {
 /// ```
 /// Most of the time, this should not be created manually,
 /// but the option is there.
-/// 
+///
 /// Notably, this also stores an id which is used to tell if
 /// a [WriteHalf] and [ReadHalf] came from the same source
 /// and can therefore be merged in [recombine](Split::recombine).
@@ -166,7 +167,7 @@ impl<W: std::io::Write> WriteHalf<W> {
     /// This creates an instance of [WriteHalf] containing
     /// the provided [Writer](std::io::Write).
     /// ```
-    /// # use albatrice::split::WriteHalf;
+    /// # use abes_nice_things::split::WriteHalf;
     /// # fn main() {
     /// let writer = Vec::new();
     /// let write_half = WriteHalf::new(writer);
@@ -212,7 +213,7 @@ impl<W: std::io::Write> WriteHalf<W> {
     /// created by [new](WriteHalf::new), it will
     /// return the contained [Writer](std::io::Write)
     /// ```
-    /// # use albatrice::split::WriteHalf;
+    /// # use abes_nice_things::split::WriteHalf;
     /// # fn main() {
     /// let writer = Vec::new();
     /// let write_half = WriteHalf::new(writer);
@@ -226,7 +227,7 @@ impl<W: std::io::Write> WriteHalf<W> {
     /// would panic.
     pub fn get(self) -> Option<W> {
         if self.1.is_none() {
-            return Some(self.0)
+            return Some(self.0);
         }
         None
     }
@@ -289,10 +290,13 @@ impl<W: std::io::Write> std::io::Write for WriteHalf<W> {
     }
 }
 impl<W: std::io::Write + FromBinary> FromBinary for WriteHalf<W> {
-    fn from_binary(binary: &mut dyn std::io::Read) -> Result<Self, std::io::Error> where Self: Sized {
+    fn from_binary(binary: &mut dyn std::io::Read) -> Result<Self, std::io::Error>
+    where
+        Self: Sized,
+    {
         Ok(WriteHalf(
             W::from_binary(binary)?,
-            Option::from_binary(binary)?
+            Option::from_binary(binary)?,
         ))
     }
 }
@@ -311,7 +315,7 @@ impl<W: std::io::Write + ToBinary> ToBinary for WriteHalf<W> {
 /// Most of the time, this is created by calling [split](Split::split)
 /// however it can be created manually.
 /// ```
-/// # use albatrice::split::ReadHalf;
+/// # use abes_nice_things::split::ReadHalf;
 /// # use std::collections::VecDeque;
 /// # fn main() {
 /// let vec_deque = VecDeque::new();
@@ -322,7 +326,7 @@ impl<W: std::io::Write + ToBinary> ToBinary for WriteHalf<W> {
 /// ```
 /// Most of the time, this should not be created manually,
 /// but the option is there.
-/// 
+///
 /// Notably, this also stores an id which is used to tell if
 /// a [WriteHalf] and [ReadHalf] came from the same source
 /// and can therefore be merged in [recombine](Split::recombine).
@@ -335,7 +339,7 @@ impl<R: std::io::Read> ReadHalf<R> {
     /// This creates an instance of [ReadHalf] containing
     /// the provided [Reader](std::io::Read).
     /// ```
-    /// # use albatrice::split::ReadHalf;
+    /// # use abes_nice_things::split::ReadHalf;
     /// # use std::collections::VecDeque;
     /// # fn main() {
     /// let reader = VecDeque::new();
@@ -382,7 +386,7 @@ impl<R: std::io::Read> ReadHalf<R> {
     /// created by [new](ReadHalf::new), it will
     /// return the contained [Reader](std::io::Read)
     /// ```
-    /// # use albatrice::split::ReadHalf;
+    /// # use abes_nice_things::split::ReadHalf;
     /// # use std::collections::VecDeque;
     /// # fn main() {
     /// let reader = VecDeque::new();
@@ -397,7 +401,7 @@ impl<R: std::io::Read> ReadHalf<R> {
     /// would panic.
     pub fn get(self) -> Option<R> {
         if self.1.is_none() {
-            return Some(self.0)
+            return Some(self.0);
         }
         None
     }
@@ -457,10 +461,13 @@ impl<R: std::io::Read> std::io::Read for ReadHalf<R> {
     }
 }
 impl<R: std::io::Read + FromBinary> FromBinary for ReadHalf<R> {
-    fn from_binary(binary: &mut dyn std::io::Read) -> Result<Self, std::io::Error> where Self: Sized {
+    fn from_binary(binary: &mut dyn std::io::Read) -> Result<Self, std::io::Error>
+    where
+        Self: Sized,
+    {
         Ok(ReadHalf(
             R::from_binary(binary)?,
-            Option::from_binary(binary)?
+            Option::from_binary(binary)?,
         ))
     }
 }
@@ -470,4 +477,3 @@ impl<R: std::io::Read + ToBinary> ToBinary for ReadHalf<R> {
         self.1.as_ref().to_binary(binary)
     }
 }
-
