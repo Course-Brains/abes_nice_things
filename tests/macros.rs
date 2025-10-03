@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     mod assert_pattern {
-        use albatrice::assert_pattern;
+        use abes_nice_things::assert_pattern;
         #[test]
         fn success() {
             let value: Option<usize> = None;
@@ -26,7 +26,7 @@ mod tests {
         }
     }
     mod assert_pattern_ne {
-        use albatrice::assert_pattern_ne;
+        use abes_nice_things::assert_pattern_ne;
         #[test]
         fn success() {
             let value: Option<usize> = Some(64);

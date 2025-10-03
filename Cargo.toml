@@ -1,5 +1,5 @@
 [package]
-name = "albatrice"
+name = "abes_nice_things"
 version = "0.2.0"
 edition = "2021"
 default-run = "file_comm"

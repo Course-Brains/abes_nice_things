@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "albatrice"
+name = "abes_nice_things"
 version = "0.2.0"

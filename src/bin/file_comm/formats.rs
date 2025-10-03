@@ -1,6 +1,6 @@
+use crate::{quiet, Mode, Settings};
+use abes_nice_things::{FromBinary, ToBinary};
 use std::net::TcpStream;
-use albatrice::{ToBinary, FromBinary};
-use crate::{Settings, Mode, quiet};
 
 pub type FormatID = u32;
 pub const HIGHEST: FormatID = 1;
@@ -14,7 +14,7 @@ pub fn hand_shake(stream: TcpStream, settings: Settings) -> Result<(), String> {
     //////////////////////////////////////////////////////////////
     match settings.mode {
         Mode::Recv => recv_hand_shake(stream, settings),
-        Mode::Send => send_hand_shake(stream, settings)
+        Mode::Send => send_hand_shake(stream, settings),
     }
 }
 fn send_hand_shake(mut stream: TcpStream, settings: Settings) -> Result<(), String> {
@@ -26,7 +26,7 @@ fn send_hand_shake(mut stream: TcpStream, settings: Settings) -> Result<(), Stri
     match format {
         0 => f0::send(stream, settings),
         1 => f1::send(stream, settings),
-        _ => return Err("Invalid format given by other".to_string())
+        _ => return Err("Invalid format given by other".to_string()),
     }
     Ok(())
 }
@@ -51,7 +51,7 @@ fn recv_hand_shake(mut stream: TcpStream, settings: Settings) -> Result<(), Stri
     match format {
         0 => f0::recv(stream, settings),
         1 => f1::recv(stream, settings),
-        _ => unreachable!()
+        _ => unreachable!(),
     };
     Ok(())
 }
@@ -60,53 +60,58 @@ mod f0 {
     // Length of name(u32)
     // name
     // data
+    use crate::{quiet, Settings};
+    use abes_nice_things::{input, FromBinary, Input, ToBinary};
     use std::{
-        net::TcpStream,
         fs::File,
+        io::{Read, Write},
+        net::TcpStream,
         path::PathBuf,
-        io::{Read, Write}
     };
-    use crate::{Settings, quiet};
-    use albatrice::{input, Input, ToBinary, FromBinary};
 
     static mut TO_SEND: Option<PathBuf> = None;
     pub fn send(mut stream: TcpStream, settings: Settings) {
         let file;
-        #[allow(static_mut_refs)]// compiler is wrong
+        #[allow(static_mut_refs)] // compiler is wrong
         let path = match unsafe { TO_SEND.clone() } {
             Some(path) => {
                 file = File::open(&path).unwrap();
                 path
-            },
-            None => {
-                loop {
-                    let path = match settings.path {
-                        Some(ref path) => path,
-                        None => {
-                            println!("What file do you want to send?");
-                            &input()
-                        }
-                    };
-                    match File::open(path) { 
-                        Ok(file_in) => {
-                            quiet!("Valid file");
-                            file = file_in;
-                            if settings.host.is_some() {
-                                if settings.path.is_some() {}
-                                else if *"y" == <Input>::yn()
-                                    .msg("Do you want to use this for subsequent requests?y/n")
-                                .get().unwrap() {
-                                    unsafe { TO_SEND = Some(PathBuf::from(&path)) }
-                                }
-                            }
-                            break PathBuf::from(path)
-                        }
-                        Err(error) => eprintln!("Failed to identify file validity: {error}")
-                    }
-                }
             }
+            None => loop {
+                let path = match settings.path {
+                    Some(ref path) => path,
+                    None => {
+                        println!("What file do you want to send?");
+                        &input()
+                    }
+                };
+                match File::open(path) {
+                    Ok(file_in) => {
+                        quiet!("Valid file");
+                        file = file_in;
+                        if settings.host.is_some() {
+                            if settings.path.is_some() {
+                            } else if *"y"
+                                == <Input>::yn()
+                                    .msg("Do you want to use this for subsequent requests?y/n")
+                                    .get()
+                                    .unwrap()
+                            {
+                                unsafe { TO_SEND = Some(PathBuf::from(&path)) }
+                            }
+                        }
+                        break PathBuf::from(path);
+                    }
+                    Err(error) => eprintln!("Failed to identify file validity: {error}"),
+                }
+            },
         };
-        let path = path.file_name().expect("Failed to get file name").to_str().unwrap();
+        let path = path
+            .file_name()
+            .expect("Failed to get file name")
+            .to_str()
+            .unwrap();
         let len = file.metadata().expect("Failed to get file metadata").len();
 
         quiet!("Sending metadata");
@@ -122,20 +127,24 @@ mod f0 {
         let mut buf = vec![0; name_len as usize];
         stream.read_exact(&mut buf).unwrap();
         let name = String::from_utf8(buf).unwrap();
-        if settings.auto_accept {}
-        else if "n" == match stream.peer_addr() {
-            Ok(addr) => <Input>::yn().msg(
-                &format!(
-                    "Are you sure you want to accept {name} from {addr}?y/n"
-                )
-            ).get().unwrap(),
-            Err(_) => <Input>::yn().msg(
-                &format!(
-                    "Are you sure you want to accept {name} from unknown?y/n"
-                )
-            ).get().unwrap()
-        } {
-            return
+        if settings.auto_accept {
+        } else if "n"
+            == match stream.peer_addr() {
+                Ok(addr) => <Input>::yn()
+                    .msg(&format!(
+                        "Are you sure you want to accept {name} from {addr}?y/n"
+                    ))
+                    .get()
+                    .unwrap(),
+                Err(_) => <Input>::yn()
+                    .msg(&format!(
+                        "Are you sure you want to accept {name} from unknown?y/n"
+                    ))
+                    .get()
+                    .unwrap(),
+            }
+        {
+            return;
         }
         let mut buf = Vec::new();
         quiet!("Getting data");
@@ -143,7 +152,6 @@ mod f0 {
         quiet!("Writing to file");
         std::fs::write(name, buf).unwrap();
         quiet!("Done")
-        
     }
     pub fn transfer(mut from: impl Read, mut to: impl Write, mut len: u64, interval: usize) {
         while len > interval as u64 {
@@ -163,10 +171,10 @@ mod f1 {
     // 2: len: u32 of name
     // 3: name: String
     // 4: data: [u8]
-    use std::net::TcpStream;
-    use std::io::{Read, Write};
     use crate::{quiet, Settings, QUIET};
-    use albatrice::{FromBinary, ToBinary, Input, input};
+    use abes_nice_things::{input, FromBinary, Input, ToBinary};
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
     // Assumed to be less than 2^32
     const BUFFER_SIZE: u64 = 1000;
     // A thing for keeping track of how much has been written
@@ -174,7 +182,7 @@ mod f1 {
     struct Tracker {
         written: u64,
         total_written: u64,
-        previous: Option<std::time::Instant>
+        previous: Option<std::time::Instant>,
     }
     impl Tracker {
         // The threshold for when we should print again
@@ -182,7 +190,7 @@ mod f1 {
         const BAR_LENGTH: usize = 50;
         fn display(&mut self, total: u64) {
             if unsafe { QUIET } {
-                return
+                return;
             }
             if let Some(previous) = self.previous {
                 // Get the time elapsed and check if we are printing
@@ -199,17 +207,19 @@ mod f1 {
                 let rate = Rate(self.written);
                 let percent_done = match self.total_written {
                     0 => 0.0,
-                    written => (written as f64)/(total as f64)
+                    written => (written as f64) / (total as f64),
                 };
                 let filled = ((Tracker::BAR_LENGTH as f64) * percent_done) as usize;
                 let unfilled = Tracker::BAR_LENGTH - filled;
-                stdout.write(
-                    ("[".to_string() +
-                    &"#".repeat(filled) +
-                    &"-".repeat(unfilled) +
-                    &"] ").as_bytes()
-                ).unwrap();
-                stdout.write_fmt(format_args!("%{:.3} ", percent_done*100.0)).unwrap();
+                stdout
+                    .write(
+                        ("[".to_string() + &"#".repeat(filled) + &"-".repeat(unfilled) + &"] ")
+                            .as_bytes(),
+                    )
+                    .unwrap();
+                stdout
+                    .write_fmt(format_args!("%{:.3} ", percent_done * 100.0))
+                    .unwrap();
                 stdout.write_fmt(format_args!("{rate}")).unwrap();
                 stdout.flush().unwrap();
             }
@@ -223,14 +233,12 @@ mod f1 {
             if self.0 < 1000 {
                 // Showing in bytes
                 write!(f, "{} B/s", self.0)
-            }
-            else if self.0 < 1000000 {
+            } else if self.0 < 1000000 {
                 // Showing in kilo bytes
-                write!(f, "{} kB/s", self.0/1000) 
-            }
-            else {
+                write!(f, "{} kB/s", self.0 / 1000)
+            } else {
                 // Showing in mega bytes
-                write!(f, "{} mB/s", self.0/1000000)
+                write!(f, "{} mB/s", self.0 / 1000000)
             }
             // I'm not accounting for giga bytes per second, fuck that
         }
@@ -265,16 +273,18 @@ mod f1 {
                 match std::fs::exists(&path) {
                     Ok(true) => break path,
                     Ok(false) => println!("That file does not exist"),
-                    Err(error) => eprintln!(
-                        "Failed to determine if the file exists: {error}"
-                    )
+                    Err(error) => eprintln!("Failed to determine if the file exists: {error}"),
                 }
             }
         });
-        if !settings.auto_accept && "n" == <Input>::yn()
-            .msg(&format!("Do you want to send {path}?y/n"))
-        .get().unwrap() {
-            return
+        if !settings.auto_accept
+            && "n"
+                == <Input>::yn()
+                    .msg(&format!("Do you want to send {path}?y/n"))
+                    .get()
+                    .unwrap()
+        {
+            return;
         }
         quiet!("Getting file at path: {path}");
         let file = std::fs::File::open(&path).unwrap();
@@ -292,18 +302,22 @@ mod f1 {
         let mut tracker = Tracker {
             written: 0,
             total_written: 0,
-            previous: None
+            previous: None,
         };
         transfer(file, stream, len, &mut tracker);
         quiet!("Data sent");
-
     }
     pub fn recv(mut stream: TcpStream, settings: Settings) {
         // Getting metadata
         let path = String::from_binary(&mut stream).unwrap();
         let len = u64::from_binary(&mut stream).unwrap();
         if !settings.auto_accept {
-            if "n" == <Input>::yn().msg(&format!("Do you want to accept {path}?y/n")).get().unwrap() {
+            if "n"
+                == <Input>::yn()
+                    .msg(&format!("Do you want to accept {path}?y/n"))
+                    .get()
+                    .unwrap()
+            {
                 return;
             }
         }
@@ -312,7 +326,7 @@ mod f1 {
         let mut tracker = Tracker {
             written: 0,
             total_written: 0,
-            previous: None
+            previous: None,
         };
         transfer(stream, file, len, &mut tracker);
         quiet!("Recieved");

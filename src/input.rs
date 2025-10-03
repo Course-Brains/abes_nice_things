@@ -4,7 +4,7 @@ use std::convert::Infallible;
 /// The simplest way to use this is to just get input with no
 /// message or condition:
 /// ```no_run
-/// # use albatrice::Input;
+/// # use abes_nice_things::Input;
 /// # fn main() {
 /// let input: String = <Input>::new().get().unwrap();
 /// # }
@@ -26,7 +26,7 @@ use std::convert::Infallible;
 /// define it after creating an [Input] instance
 /// by using the [msg](Input::msg) method.
 /// ```
-/// # use albatrice::Input;
+/// # use abes_nice_things::Input;
 /// # fn main() {
 /// <Input>::new().msg("Whatever you want");
 /// # }
@@ -73,7 +73,7 @@ use std::convert::Infallible;
 /// 'n' not 'Y' or 'N'. However, if you wanted to fix
 /// this, you could make your own condition:
 /// ```
-/// # use albatrice::Input;
+/// # use abes_nice_things::Input;
 /// # fn main() {
 /// <Input>::new().cond(& |string| {
 ///     match string.to_lowercase().as_str() {
@@ -86,7 +86,7 @@ use std::convert::Infallible;
 /// You can set either of them while chaining method
 /// calls together because they all return &mut [Input]
 /// ```no_run
-/// # use albatrice::Input;
+/// # use abes_nice_things::Input;
 /// # fn main() {
 /// let input: String = <Input>::new()
 ///     .msg("some message")
@@ -113,7 +113,7 @@ impl<'a, E> Input<'a, E> {
     /// will need to handle it, most of the time by
     /// [unwrap](Result::unwrap)ing it.
     /// ```no_run
-    /// # use albatrice::Input;
+    /// # use abes_nice_things::Input;
     /// # fn main() {
     /// let input: String = <Input>::new().get().unwrap();
     /// # }
@@ -189,7 +189,7 @@ impl<'a, E> Input<'a, E> {
     /// to give this method a &[str] with the message
     /// you want printed. For example:
     /// ```
-    /// # use albatrice::Input;
+    /// # use abes_nice_things::Input;
     /// # fn main() {
     /// <Input>::new().msg("Something idk").get().unwrap();
     /// # }
@@ -236,7 +236,7 @@ impl<'a, E> Input<'a, E> {
     /// by [yn](Input::yn) to enforce only y or n being
     /// returned could be done as shown
     /// ```no_run
-    /// # use albatrice::Input;
+    /// # use abes_nice_things::Input;
     /// # fn main() {
     /// let input: String = <Input>::new()
     ///     .cond(&|string| {
@@ -296,7 +296,7 @@ impl<E> Default for Input<'_, E> {
 /// This is a convenience function which is equivalent
 /// to using [Input] in the following way:
 /// ```no_run
-/// # use albatrice::Input;
+/// # use abes_nice_things::Input;
 /// # fn main() {
 /// <Input>::new().get().unwrap()
 /// # ;

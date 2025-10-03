@@ -1,4 +1,4 @@
-use albatrice::{manual_reader, input};
+use abes_nice_things::{input, manual_reader};
 fn main() {
     println!("What file?");
     let path = input();
