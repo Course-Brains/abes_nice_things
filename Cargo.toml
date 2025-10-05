@@ -10,6 +10,10 @@ default-run = "file_comm"
 name = "file_comm"
 path = "src/bin/file_comm/main.rs"
 
+[[bins]]
+name = "run"
+path = "src/bin/run/main.rs"
+
 [dependencies]
 
 [dev-dependencies]

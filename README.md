@@ -31,20 +31,33 @@ I don't have anything in this library yet that would warrant that)
 please report it privately through GitHub.
 
 # Binaries
-## file_comm
-file_comm is a binary for sending files through direct peer to peer with a format
+To install the binaries run
+```
+cargo install --git https://github.com/Course-Brains/abes_nice_things.git --branch release
+```
+## file\_comm
+file\_comm is a binary for sending files through direct peer to peer with a format
 handshake while allowing either the sender or receiver to host the
 connection.
-To install it, run
-```
-cargo install --git https://github.com/albatrice/albatrice.git" --branch release
-```
-Once you have done that, you will be able to get more information by using
+
+To see the specific documentation run
 ```
 file_comm help
 ```
-Or, if you have downloaded this library in its entirety for whatever
-reason, you can get more information through
-```
-cargo run -- help
-```
+
+## run
+This is a way to automate running projects in the correct way (although it is entirely
+my own system and I would be surprised if it worked on something made by someone else)
+which looks for a file in the current directory called `run` and tries
+to run it, or if it is not there, it will see if there is a file
+called `Cargo.toml` in which case it will run `cargo run --release`.
+
+Notably, this will pass all arguments given to it forward onto
+whatever it uses to run it, meaning that if there is a run script, it
+will run the script with whatever arguments you gave to `run`. Or if
+there is a `Cargo.toml` file then it will do `cargo run --release
+[whatever arguments you gave]`
+
+There is no built in documentation for this because if running `run
+help` and catching that would block running actual projects with the
+argument help which is why this details how it works.
