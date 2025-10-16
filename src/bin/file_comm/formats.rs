@@ -69,11 +69,10 @@ mod f0 {
         path::PathBuf,
     };
 
-    static mut TO_SEND: Option<PathBuf> = None;
+    static TO_SEND: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
     pub fn send(mut stream: TcpStream, settings: Settings) {
         let file;
-        #[allow(static_mut_refs)] // compiler is wrong
-        let path = match unsafe { TO_SEND.clone() } {
+        let path = match TO_SEND.try_lock().unwrap().clone() {
             Some(path) => {
                 file = File::open(&path).unwrap();
                 path
@@ -98,7 +97,7 @@ mod f0 {
                                     .get()
                                     .unwrap()
                             {
-                                unsafe { TO_SEND = Some(PathBuf::from(&path)) }
+                                *TO_SEND.try_lock().unwrap() = Some(PathBuf::from(&path))
                             }
                         }
                         break PathBuf::from(path);
@@ -189,7 +188,7 @@ mod f1 {
         const THRESHOLD: std::time::Duration = std::time::Duration::from_millis(500);
         const BAR_LENGTH: usize = 50;
         fn display(&mut self, total: u64) {
-            if unsafe { QUIET } {
+            if QUIET.load(std::sync::atomic::Ordering::Relaxed) {
                 return;
             }
             if let Some(previous) = self.previous {
@@ -235,10 +234,10 @@ mod f1 {
                 write!(f, "{} B/s", self.0)
             } else if self.0 < 1000000 {
                 // Showing in kilo bytes
-                write!(f, "{} kB/s", self.0 / 1000)
+                write!(f, "{} KB/s", self.0 / 1000)
             } else {
                 // Showing in mega bytes
-                write!(f, "{} mB/s", self.0 / 1000000)
+                write!(f, "{} MB/s", self.0 / 1000000)
             }
             // I'm not accounting for giga bytes per second, fuck that
         }

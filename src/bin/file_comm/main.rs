@@ -2,23 +2,19 @@ use abes_nice_things::{input, Input};
 use std::net::*;
 mod formats;
 
-static mut QUIET: bool = false;
+static QUIET: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[macro_export]
 macro_rules! quiet {
     () => {
-        unsafe {
-            if !$crate::QUIET {
+            if !$crate::QUIET.load(std::sync::atomic::Ordering::Relaxed) {
                 println!()
             }
-        }
     };
     ($($args:tt)*) => {
-        unsafe {
-            if !$crate::QUIET  {
+            if !$crate::QUIET.load(std::sync::atomic::Ordering::Relaxed)  {
                 println!($($args)*)
             }
-        }
     }
 }
 
@@ -132,12 +128,8 @@ impl Settings {
                     out.target = Some(args.next().expect("Need a addr:port after --target"))
                 }
                 "--no-target" => out.target = None,
-                "--quiet" => unsafe {
-                    QUIET = true;
-                },
-                "--normal" => unsafe {
-                    QUIET = false;
-                },
+                "--quiet" => QUIET.store(true, std::sync::atomic::Ordering::Relaxed),
+                "--normal" => QUIET.store(false, std::sync::atomic::Ordering::Relaxed),
                 "--auto-accept" => out.auto_accept = true,
                 "--no-auto-accept" => out.auto_accept = false,
                 "--repeat" => out.repeat = true,

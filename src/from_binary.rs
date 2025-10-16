@@ -1488,8 +1488,8 @@ mod tests {
         num_helper!(u128, u128,);
         #[cfg(feature = "dyn_binary")]
         num_helper!(usize, usize_dyn_binary,);
-        num_helper!(i8, i8,);
-        num_helper!(i16, i16,);
+        num_helper!(i8, i8);
+        num_helper!(i16, i16);
         num_helper!(i32, i32,);
         num_helper!(i64, i64,);
         num_helper!(i128, i128,);
