@@ -18,23 +18,23 @@ use crate::Binary;
 pub unsafe trait Number
 where
     Self: Sized
-        + std::ops::Add
+        + std::ops::Add<Output = Self>
         + for<'a> std::ops::Add<&'a Self>
         + std::ops::AddAssign
         + for<'a> std::ops::AddAssign<&'a Self>
-        + std::ops::Sub
+        + std::ops::Sub<Output = Self>
         + for<'a> std::ops::Sub<&'a Self>
         + std::ops::SubAssign
         + for<'a> std::ops::SubAssign<&'a Self>
-        + std::ops::Mul
+        + std::ops::Mul<Output = Self>
         + for<'a> std::ops::Mul<&'a Self>
         + std::ops::MulAssign
         + for<'a> std::ops::MulAssign<&'a Self>
-        + std::ops::Div
+        + std::ops::Div<Output = Self>
         + for<'a> std::ops::Div<&'a Self>
         + std::ops::DivAssign
         + for<'a> std::ops::DivAssign<&'a Self>
-        + std::ops::Rem
+        + std::ops::Rem<Output = Self>
         + for<'a> std::ops::Rem<&'a Self>
         + std::ops::RemAssign
         + for<'a> std::ops::RemAssign<&'a Self>
@@ -54,45 +54,39 @@ where
         + TryFrom<u16>
         + TryFrom<i8>
         + TryFrom<i16>
-        + std::str::FromStr,
+        + std::str::FromStr
+        + PrimAs<u8>
+        + PrimAs<u16>
+        + PrimAs<u32>
+        + PrimAs<u64>
+        + PrimAs<u128>
+        + PrimAs<usize>
+        + PrimAs<i8>
+        + PrimAs<i16>
+        + PrimAs<i32>
+        + PrimAs<i64>
+        + PrimAs<i128>
+        + PrimAs<isize>
+        + PrimAs<f32>
+        + PrimAs<f64>
+        + PrimFrom<u8>
+        + PrimFrom<u16>
+        + PrimFrom<u32>
+        + PrimFrom<u64>
+        + PrimFrom<u128>
+        + PrimFrom<usize>
+        + PrimFrom<i8>
+        + PrimFrom<i16>
+        + PrimFrom<i32>
+        + PrimFrom<i64>
+        + PrimFrom<i128>
+        + PrimFrom<isize>
+        + PrimFrom<f32>
+        + PrimFrom<f64>,
 {
-    /// Gets the minimum value for a number. This is equivalent to using the MIN constant for each
-    /// number primitive:
-    /// ```
-    /// # use abes_nice_things::Number;
-    /// # fn main() {
-    /// assert_eq!(isize::get_min(), isize::MIN)
-    /// # }
-    /// ```
-    /// In almost every case, it is better to just use the constant. However, in cases where you do
-    /// not know which number primitive you are handling and therefore cannot use the constant,
-    /// this will fill that role.
-    fn get_min() -> Self;
-
-    /// Gets the maximum value for a number. This is equivalent to using the MAX constant for each
-    /// number primitive:
-    /// ```
-    /// # use abes_nice_things::Number;
-    /// # fn main() {
-    /// assert_eq!(isize::get_max(), isize::MAX)
-    /// # }
-    /// ```
-    /// In almost every case, it is better to just use the constant. However, in cases where you do
-    /// not know which number primitive you are handling and therefore cannot use the constant,
-    /// this will fill that role.
-    fn get_max() -> Self;
-
-    /// Gets the number of bits for a given number. This is usually equivalent to using the BITS
-    /// constant for the relevant type, but this will work even if you do not know which number
-    /// primitive you are handling.
-    /// ```
-    /// # use abes_nice_things::Number;
-    /// # fn main() {
-    /// assert_eq!(usize::get_bits(), usize::BITS);
-    /// # }
-    /// ```
-    fn get_bits() -> u32;
-
+    const MIN: Self;
+    const MAX: Self;
+    const BITS: u32;
     /// Works like max except that it assigns the result to self.
     /// ```no_run
     /// # use abes_nice_things::Number;
@@ -149,14 +143,22 @@ where
         + std::fmt::Octal
         + std::fmt::UpperHex
         + std::fmt::UpperExp
-        + TryFrom<u32>
-        + TryFrom<u64>
-        + TryFrom<usize>
-        + TryFrom<u128>
-        + TryFrom<i32>
-        + TryFrom<i64>
-        + TryFrom<isize>
-        + TryFrom<i128>,
+        + TryFrom<u32, Error: std::fmt::Debug>
+        + TryFrom<u64, Error: std::fmt::Debug>
+        + TryFrom<usize, Error: std::fmt::Debug>
+        + TryFrom<u128, Error: std::fmt::Debug>
+        + TryFrom<i32, Error: std::fmt::Debug>
+        + TryFrom<i64, Error: std::fmt::Debug>
+        + TryFrom<isize, Error: std::fmt::Debug>
+        + TryFrom<i128, Error: std::fmt::Debug>
+        + TryInto<u32, Error: std::fmt::Debug>
+        + TryInto<u64, Error: std::fmt::Debug>
+        + TryInto<usize, Error: std::fmt::Debug>
+        + TryInto<u128, Error: std::fmt::Debug>
+        + TryInto<i32, Error: std::fmt::Debug>
+        + TryInto<i64, Error: std::fmt::Debug>
+        + TryInto<isize, Error: std::fmt::Debug>
+        + TryInto<i128, Error: std::fmt::Debug>,
 {
 }
 /// This is a trait which is implemented
@@ -182,12 +184,6 @@ where
 pub unsafe trait UnsignedInteger: Integer
 where
     Self: From<u8>,
-    for<'a> &'a Self: std::ops::BitAnd<Self>
-        + std::ops::BitAnd<&'a Self>
-        + std::ops::BitOr<Self>
-        + std::ops::BitOr<&'a Self>
-        + std::ops::BitXor<Self>
-        + std::ops::BitXor<&'a Self>,
 {
 }
 /// This is a trait which is implemented
@@ -196,18 +192,41 @@ where
 /// information, look at [Number]
 pub unsafe trait Float: Number
 where
-    Self: std::ops::Neg + From<f32>,
+    Self: std::ops::Neg + From<f32> + TryInto<f64, Error: std::fmt::Debug>,
     for<'a> &'a Self: std::ops::Neg,
 {
 }
+pub trait PrimAs<T> {
+    fn prim_as(self) -> T;
+}
+pub trait PrimFrom<T> {
+    fn prim_from(src: T) -> Self;
+}
+macro_rules! prim_as_helper_helper {
+    ($type:ty, $($into:ty)*) => {
+        $(
+            impl PrimAs<$into> for $type {
+                fn prim_as(self) -> $into {
+                    self as $into
+                }
+            }
+            impl PrimFrom<$into> for $type {
+                fn prim_from(src: $into) -> $type {
+                    src as $type
+                }
+            }
+        )*
+    }
+}
+macro_rules! prim_as_helper {
+    ($type:ty) => {
+        prim_as_helper_helper!($type, u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize f32 f64);
+    }
+}
 macro_rules! number_trait_helper_helper {
     ($type:ty) => {
-        fn get_min() -> $type {
-            <$type>::MIN
-        }
-        fn get_max() -> $type {
-            <$type>::MAX
-        }
+        const MIN: $type = <$type>::MIN;
+        const MAX: $type = <$type>::MAX;
         fn max_assign(&mut self, other: $type) {
             *self = (*self).max(other);
         }
@@ -220,18 +239,16 @@ macro_rules! number_trait_helper {
     ($type:ty) => {
         unsafe impl Number for $type {
             number_trait_helper_helper!($type);
-            fn get_bits() -> u32 {
-                <$type>::BITS
-            }
+            const BITS: u32 = <$type>::BITS;
         }
+        prim_as_helper!($type);
     };
     ($type:ty, $bits:literal) => {
         unsafe impl Number for $type {
             number_trait_helper_helper!($type);
-            fn get_bits() -> u32 {
-                $bits
-            }
+            const BITS: u32 = $bits;
         }
+        prim_as_helper!($type);
     };
 }
 macro_rules! integer_trait_helper {

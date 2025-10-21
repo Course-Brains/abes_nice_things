@@ -9,6 +9,12 @@ pub mod split;
 pub use split::Split;
 pub mod numbers;
 pub use numbers::*;
+pub mod progress_bar;
+pub use progress_bar::ProgressBar;
+pub mod style;
+pub use style::Style;
+pub mod random;
+pub use random::random;
 
 pub mod prelude {
     pub use crate::{
@@ -123,6 +129,19 @@ macro_rules! debug {
         }
     };
 }
+#[macro_export]
+macro_rules! setter {
+    ($field:ident, $type:ty) => {
+        pub fn $field(&mut self, val: $type) -> &mut Self {
+            self.$field = val;
+            self
+        }
+    };
+    ($($field:ident = $type:ty,)*) => {
+        $(setter!($field, $type);)*
+    }
+}
+
 /// Encodes 8 [bool]s into a [u8], compressing them to be an eighth the size. I do not recommend doing
 /// any modifying operations on the resulting [u8] if you want to get the [bool]s back.
 /// ```
