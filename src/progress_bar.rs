@@ -11,11 +11,6 @@ pub struct ProgressBar<T: UnsignedInteger> {
     percent_done: bool,
     amount_done: bool,
     done_style: Style,
-<<<<<<< Updated upstream
-    waiting_style: Style,
-    base_style: Style,
-    supplementary_newline: bool,
-=======
     /// [Style] used by the characters in the bar that are not done yet
     waiting_style: Style,
     base_style: Style,
@@ -24,7 +19,6 @@ pub struct ProgressBar<T: UnsignedInteger> {
     /// Last done character in the bar
     header_char: char,
     waiting_char: char,
->>>>>>> Stashed changes
 }
 impl<T: UnsignedInteger> ProgressBar<T> {
     pub fn new(target: T, visual_len: T) -> ProgressBar<T> {
@@ -38,12 +32,9 @@ impl<T: UnsignedInteger> ProgressBar<T> {
             waiting_style: Style::new(),
             base_style: Style::new(),
             supplementary_newline: false,
-<<<<<<< Updated upstream
-=======
             done_char: '=',
             header_char: '>',
             waiting_char: '-',
->>>>>>> Stashed changes
         }
     }
     setter!(
@@ -54,25 +45,13 @@ impl<T: UnsignedInteger> ProgressBar<T> {
         base_style = Style,
         supplementary_newline = bool,
         current = T,
-<<<<<<< Updated upstream
-=======
         done_char = char,
         header_char = char,
         waiting_char = char,
->>>>>>> Stashed changes
     );
     pub fn draw(&self) {
         assert!(self.current <= self.target);
         let num_done = (self.current * self.visual_len) / self.target;
-<<<<<<< Updated upstream
-        print!(
-            "{}[{}{}{}{}{}]",
-            self.base_style,
-            self.done_style,
-            "#".repeat(num_done.try_into().unwrap()),
-            self.waiting_style,
-            "-".repeat((self.visual_len - num_done).try_into().unwrap()),
-=======
         print!("\x1b[s");
         print!(
             "{}[{}{}{}{}{}{}]\x1b[0m",
@@ -94,7 +73,6 @@ impl<T: UnsignedInteger> ProgressBar<T> {
                 .to_string()
                 .as_str()
                 .repeat((self.visual_len - num_done).try_into().unwrap()),
->>>>>>> Stashed changes
             self.base_style
         );
         if self.supplementary_newline {
@@ -116,11 +94,8 @@ impl<T: UnsignedInteger> ProgressBar<T> {
     pub fn clear(&self) {
         if self.supplementary_newline {
             print!("\r\x1b[2K\x1b[A\x1b[2K");
-<<<<<<< Updated upstream
-=======
         } else {
             print!("\r\x1b[2K");
->>>>>>> Stashed changes
         }
     }
     pub fn set(&mut self, new_val: T) {
@@ -144,12 +119,9 @@ impl<T: UnsignedInteger> FromBinary for ProgressBar<T> {
             waiting_style: Style::from_binary(binary)?,
             base_style: Style::from_binary(binary)?,
             supplementary_newline: bool::from_binary(binary)?,
-<<<<<<< Updated upstream
-=======
             done_char: char::from_binary(binary)?,
             header_char: char::from_binary(binary)?,
             waiting_char: char::from_binary(binary)?,
->>>>>>> Stashed changes
         })
     }
 }
@@ -160,11 +132,7 @@ impl<T: UnsignedInteger> ToBinary for ProgressBar<T> {
                 $(self.$field.to_binary(binary)?;)*
             }
         }
-<<<<<<< Updated upstream
-        helper!(current target visual_len percent_done amount_done done_style waiting_style base_style supplementary_newline);
-=======
         helper!(current target visual_len percent_done amount_done done_style waiting_style base_style supplementary_newline done_char header_char waiting_char);
->>>>>>> Stashed changes
         Ok(())
     }
 }

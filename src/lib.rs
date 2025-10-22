@@ -10,18 +10,10 @@ pub use split::Split;
 pub mod numbers;
 pub use numbers::*;
 pub mod progress_bar;
-<<<<<<< Updated upstream
-pub use progress_bar::ProgressBar;
-pub mod style;
-pub use style::Style;
-pub mod random;
-pub use random::random;
-=======
 pub mod random;
 pub use progress_bar::ProgressBar;
 pub mod style;
 pub use style::{Color, Style};
->>>>>>> Stashed changes
 
 pub mod prelude {
     pub use crate::{
@@ -160,18 +152,6 @@ macro_rules! setter {
 /// assert_eq!(bools, u8_decode(compressed));
 /// # }
 /// ```
-#[macro_export]
-macro_rules! setter {
-    ($field:ident, $type:ty) => {
-        pub fn $field(&mut self, val: $type) -> &mut Self {
-            self.$field = val;
-            self
-        }
-    };
-    ($($field:ident = $type:ty,)*) => {
-        $(setter!($field, $type);)*
-    }
-}
 pub fn u8_encode(data: [bool; 8]) -> u8 {
     let mut out = 0;
     for (index, state) in data.iter().enumerate() {

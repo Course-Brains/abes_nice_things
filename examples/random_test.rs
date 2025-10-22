@@ -2,12 +2,8 @@ use abes_nice_things::{
     random::{initialize, random},
     ProgressBar, Style,
 };
-<<<<<<< Updated upstream
-const BITS: usize = 3;
-=======
 use std::sync::atomic::*;
 const BITS: usize = 4;
->>>>>>> Stashed changes
 const ITERATIONS: u64 = u32::MAX as u64;
 fn main() {
     initialize();
@@ -16,15 +12,9 @@ fn main() {
 
     //printer();
 
-<<<<<<< Updated upstream
-    control();
-
-    println!("\n\n\n");
-=======
     //control();
 
     //println!("\n\n\n");
->>>>>>> Stashed changes
 
     num_frequency();
 
@@ -33,20 +23,12 @@ fn main() {
     bit_frequency();
 }
 
-<<<<<<< Updated upstream
-/*fn printer() {
-    for i in 0..1000 {
-        println!("{i}: {:b}", random());
-    }
-}*/
-=======
 #[allow(dead_code)]
 fn printer() {
     for i in 0..1000 {
         println!("{i}: {:b}", random());
     }
 }
->>>>>>> Stashed changes
 fn control() {
     println!("Control (with black box)");
     let start = std::time::Instant::now();
@@ -80,22 +62,6 @@ fn num_frequency() {
         .done_style(*Style::new().cyan().intense(true))
         .supplementary_newline(true)
         .amount_done(true)
-<<<<<<< Updated upstream
-        .percent_done(true);
-    progress_bar.draw();
-    for iteration in 0..ITERATIONS {
-        let index = (random() & ((1 << BITS) - 1)) as usize;
-        frequency[index] += 1;
-        if iteration % (ITERATIONS / 50) == 0 {
-            progress_bar.set(iteration);
-            progress_bar.clear();
-            progress_bar.draw();
-        }
-    }
-    progress_bar.clear();
-    let elapsed = start.elapsed();
-    let sum = frequency.iter().sum::<u64>() as f64;
-=======
         .percent_done(true)
         .waiting_style(*Style::new().red())
         .header_char('>');
@@ -125,7 +91,6 @@ fn num_frequency() {
     let sum = frequency.iter().sum::<u64>() as f64;
     assert_eq!(frequency.iter().sum::<u64>(), ITERATIONS);
     println!("Target: {}", ITERATIONS / (1 << BITS));
->>>>>>> Stashed changes
     println!(
         "Target frequency: {:.2}",
         (1.0 / (frequency.len() as f32)) * 100.0
@@ -161,26 +126,6 @@ fn bit_frequency() {
         .done_style(*Style::new().cyan().intense(true))
         .supplementary_newline(true)
         .amount_done(true)
-<<<<<<< Updated upstream
-        .percent_done(true);
-    progress_bar.draw();
-    for iteration in 0..ITERATIONS {
-        let num = random();
-        for index in 0..64 {
-            if (num & (1 << index)) != 0 {
-                frequency[index] += 1;
-            }
-        }
-        if iteration % 10000000 == 0 {
-            progress_bar.set(iteration);
-            progress_bar.clear();
-            progress_bar.draw();
-        }
-    }
-    progress_bar.clear();
-    let elapsed = start.elapsed();
-    let rel_frequency = frequency.map(|frequency| frequency as f64 / ITERATIONS as f64);
-=======
         .percent_done(true)
         .waiting_style(*Style::new().red())
         .header_char('>');
@@ -214,7 +159,6 @@ fn bit_frequency() {
     let rel_frequency = frequency.map(|frequency| frequency as f64 / ITERATIONS as f64);
     println!("Target: {}", ITERATIONS / 2);
     println!("Target frequency: 50.00%");
->>>>>>> Stashed changes
 
     for (index, frequency) in frequency.iter().enumerate() {
         println!(
