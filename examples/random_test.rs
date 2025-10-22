@@ -1,6 +1,8 @@
 use abes_nice_things::{
+    //progress_bar::Rate,
     random::{initialize, random},
-    ProgressBar, Style,
+    ProgressBar,
+    Style,
 };
 use std::sync::atomic::*;
 const BITS: usize = 4;
@@ -29,6 +31,7 @@ fn printer() {
         println!("{i}: {:b}", random());
     }
 }
+#[allow(dead_code)]
 fn control() {
     println!("Control (with black box)");
     let start = std::time::Instant::now();
@@ -61,10 +64,12 @@ fn num_frequency() {
     let mut progress_bar = *ProgressBar::new(ITERATIONS, 50)
         .done_style(*Style::new().cyan().intense(true))
         .supplementary_newline(true)
-        .amount_done(true)
+        //.amount_done(true)
         .percent_done(true)
         .waiting_style(*Style::new().red())
-        .header_char('>');
+        .header_char('>')
+        .eta(true);
+    //.rate(Some(Rate::Absolute));
     progress_bar.draw();
     let progress = (AtomicU64::new(0), AtomicBool::new(false));
     std::thread::scope(|s| {
@@ -125,10 +130,12 @@ fn bit_frequency() {
     let mut progress_bar = *ProgressBar::new(ITERATIONS, 50)
         .done_style(*Style::new().cyan().intense(true))
         .supplementary_newline(true)
-        .amount_done(true)
+        //.amount_done(true)
         .percent_done(true)
         .waiting_style(*Style::new().red())
-        .header_char('>');
+        .header_char('>')
+        .eta(true);
+    //.rate(Some(Rate::Absolute));
     progress_bar.draw();
     let progress = (AtomicU64::new(0), AtomicBool::new(false));
     std::thread::scope(|s| {

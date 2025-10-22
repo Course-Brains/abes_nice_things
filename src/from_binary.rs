@@ -1183,6 +1183,21 @@ impl ToBinary for std::time::Duration {
         self.subsec_nanos().to_binary(binary)
     }
 }
+impl FromBinary for std::time::SystemTime {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error>
+    where
+        Self: Sized,
+    {
+        Ok(std::time::UNIX_EPOCH + std::time::Duration::from_binary(binary)?)
+    }
+}
+impl ToBinary for std::time::SystemTime {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+        self.duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .to_binary(binary)
+    }
+}
 impl FromBinary for std::backtrace::BacktraceStatus {
     fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
         match u8::from_binary(binary)? {

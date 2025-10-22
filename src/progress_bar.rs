@@ -19,6 +19,9 @@ pub struct ProgressBar<T: UnsignedInteger> {
     /// Last done character in the bar
     header_char: char,
     waiting_char: char,
+    rate: Option<Rate>,
+    eta: bool,
+    prev: Option<(std::time::SystemTime, T)>,
 }
 impl<T: UnsignedInteger> ProgressBar<T> {
     pub fn new(target: T, visual_len: T) -> ProgressBar<T> {
@@ -35,6 +38,9 @@ impl<T: UnsignedInteger> ProgressBar<T> {
             done_char: '=',
             header_char: '>',
             waiting_char: '-',
+            rate: None,
+            eta: false,
+            prev: None,
         }
     }
     setter!(
@@ -48,8 +54,10 @@ impl<T: UnsignedInteger> ProgressBar<T> {
         done_char = char,
         header_char = char,
         waiting_char = char,
+        rate = Option<Rate>,
+        eta = bool,
     );
-    pub fn draw(&self) {
+    pub fn draw(&mut self) {
         assert!(self.current <= self.target);
         let num_done = (self.current * self.visual_len) / self.target;
         print!("\x1b[s");
@@ -89,6 +97,40 @@ impl<T: UnsignedInteger> ProgressBar<T> {
                     * 100.0
             );
         }
+        let now = std::time::SystemTime::now();
+        if let Some((prev_time, prev_val)) = self.prev {
+            assert!(prev_val <= self.current);
+            let value_per_second = <T as PrimAs<f64>>::prim_as(self.current - prev_val)
+                / (now.duration_since(prev_time).unwrap().as_secs_f64());
+            if let Some(rate) = self.rate {
+                match rate {
+                    Rate::Absolute => {
+                        print!(" {value_per_second:.2}/s");
+                    }
+                    Rate::Bytes => {
+                        let (divisor, prefix) = if value_per_second >= 1000000000.0 {
+                            // GigaBytes
+                            (1000000000.0, 'G')
+                        } else if value_per_second >= 1000000.0 {
+                            // MegaBytes
+                            (1000000.0, 'M')
+                        } else if value_per_second >= 1000.0 {
+                            // KiloBytes
+                            (1000.0, 'K')
+                        } else {
+                            (1.0, ' ')
+                        };
+                        print!(" {}{prefix}Bytes", value_per_second / divisor);
+                    }
+                }
+            }
+            if self.eta {
+                let eta =
+                    <T as PrimAs<f64>>::prim_as(self.target - self.current) / value_per_second;
+                print!(" eta: {eta:.2}s");
+            }
+        }
+        self.prev = Some((now, self.current));
         std::io::stdout().flush().unwrap();
     }
     pub fn clear(&self) {
@@ -104,35 +146,34 @@ impl<T: UnsignedInteger> ProgressBar<T> {
         self.draw();
     }
 }
-impl<T: UnsignedInteger> FromBinary for ProgressBar<T> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Rate {
+    Absolute,
+    Bytes,
+}
+impl FromBinary for Rate {
     fn from_binary(binary: &mut dyn std::io::Read) -> Result<Self, std::io::Error>
     where
         Self: Sized,
     {
-        Ok(ProgressBar {
-            current: T::from_binary(binary)?,
-            target: T::from_binary(binary)?,
-            visual_len: T::from_binary(binary)?,
-            percent_done: bool::from_binary(binary)?,
-            amount_done: bool::from_binary(binary)?,
-            done_style: Style::from_binary(binary)?,
-            waiting_style: Style::from_binary(binary)?,
-            base_style: Style::from_binary(binary)?,
-            supplementary_newline: bool::from_binary(binary)?,
-            done_char: char::from_binary(binary)?,
-            header_char: char::from_binary(binary)?,
-            waiting_char: char::from_binary(binary)?,
+        Ok(match u8::from_binary(binary)? {
+            0 => Rate::Absolute,
+            1 => Rate::Bytes,
+            _ => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Failed to get Rate from binary",
+                ))
+            }
         })
     }
 }
-impl<T: UnsignedInteger> ToBinary for ProgressBar<T> {
-    fn to_binary(&self, binary: &mut dyn std::io::Write) -> Result<(), std::io::Error> {
-        macro_rules! helper {
-            ($($field:ident)*) => {
-                $(self.$field.to_binary(binary)?;)*
-            }
+impl ToBinary for Rate {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), std::io::Error> {
+        match self {
+            Rate::Absolute => 0_u8,
+            Rate::Bytes => 1,
         }
-        helper!(current target visual_len percent_done amount_done done_style waiting_style base_style supplementary_newline done_char header_char waiting_char);
-        Ok(())
+        .to_binary(binary)
     }
 }
