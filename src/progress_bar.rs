@@ -1,8 +1,8 @@
 use crate::numbers::*;
 use crate::setter;
 use crate::Style;
-use crate::{FromBinary, ToBinary};
 use std::io::Write;
+use std::sync::Arc;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ProgressBar<T: UnsignedInteger> {
     current: T,
@@ -24,9 +24,9 @@ pub struct ProgressBar<T: UnsignedInteger> {
     prev: Option<(std::time::SystemTime, T)>,
 }
 impl<T: UnsignedInteger> ProgressBar<T> {
-    pub fn new(target: T, visual_len: T) -> ProgressBar<T> {
+    pub const fn new(initial: T, target: T, visual_len: T) -> ProgressBar<T> {
         ProgressBar {
-            current: T::prim_from(0),
+            current: initial,
             target,
             visual_len,
             percent_done: false,
@@ -145,35 +145,39 @@ impl<T: UnsignedInteger> ProgressBar<T> {
         self.current = new_val;
         self.draw();
     }
+    pub fn auto_update(mut self, interval: std::time::Duration) -> Proxy<T>
+    where
+        T: HasAtomic,
+    {
+        let arc = Arc::new(T::Atomic::from(self.current));
+        let weak = Arc::downgrade(&arc);
+        let handle = std::thread::spawn(move || {
+            while let Some(progress) = weak.upgrade() {
+                self.set(progress.load(std::sync::atomic::Ordering::Relaxed));
+                std::thread::sleep(interval);
+            }
+            self
+        });
+        Proxy { arc, handle }
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Rate {
     Absolute,
     Bytes,
 }
-impl FromBinary for Rate {
-    fn from_binary(binary: &mut dyn std::io::Read) -> Result<Self, std::io::Error>
-    where
-        Self: Sized,
-    {
-        Ok(match u8::from_binary(binary)? {
-            0 => Rate::Absolute,
-            1 => Rate::Bytes,
-            _ => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "Failed to get Rate from binary",
-                ))
-            }
-        })
-    }
+pub struct Proxy<T: UnsignedInteger + HasAtomic> {
+    arc: Arc<T::Atomic>,
+    handle: std::thread::JoinHandle<ProgressBar<T>>,
 }
-impl ToBinary for Rate {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), std::io::Error> {
-        match self {
-            Rate::Absolute => 0_u8,
-            Rate::Bytes => 1,
-        }
-        .to_binary(binary)
+impl<T: UnsignedInteger + HasAtomic> Proxy<T> {
+    pub fn set(&self, current: T) {
+        self.arc
+            .store(current, std::sync::atomic::Ordering::Relaxed);
+    }
+    pub fn finish(self) -> Result<ProgressBar<T>, Box<dyn std::any::Any + Send + 'static>> {
+        // Dropping the arc counts as telling the thread to stop
+        std::mem::drop(self.arc);
+        self.handle.join()
     }
 }

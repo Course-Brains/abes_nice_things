@@ -1,4 +1,5 @@
 use crate::Binary;
+use std::sync::atomic::*;
 /// A trait which is implemented by all numbers
 /// (All signed integers, all unsigned integers,
 /// and all floats){except not the nightly ones,
@@ -49,6 +50,7 @@ where
         + std::fmt::Debug
         + std::fmt::Display
         + Default
+        + Send
         + Binary
         + TryFrom<u8>
         + TryFrom<u16>
@@ -82,11 +84,46 @@ where
         + PrimFrom<i128>
         + PrimFrom<isize>
         + PrimFrom<f32>
-        + PrimFrom<f64>,
+        + PrimFrom<f64>
+        + 'static,
 {
-    const MIN: Self;
-    const MAX: Self;
-    const BITS: u32;
+    /// Gets the minimum value for a number. This is equivalent to using the MIN constant for each
+    /// number primitive:
+    /// ```
+    /// # use abes_nice_things::Number;
+    /// # fn main() {
+    /// assert_eq!(isize::get_min(), isize::MIN)
+    /// # }
+    /// ```
+    /// In almost every case, it is better to just use the constant. However, in cases where you do
+    /// not know which number primitive you are handling and therefore cannot use the constant,
+    /// this will fill that role.
+    fn get_min() -> Self;
+
+    /// Gets the maximum value for a number. This is equivalent to using the MAX constant for each
+    /// number primitive:
+    /// ```
+    /// # use abes_nice_things::Number;
+    /// # fn main() {
+    /// assert_eq!(isize::get_max(), isize::MAX)
+    /// # }
+    /// ```
+    /// In almost every case, it is better to just use the constant. However, in cases where you do
+    /// not know which number primitive you are handling and therefore cannot use the constant,
+    /// this will fill that role.
+    fn get_max() -> Self;
+
+    /// Gets the number of bits for a given number. This is usually equivalent to using the BITS
+    /// constant for the relevant type, but this will work even if you do not know which number
+    /// primitive you are handling.
+    /// ```
+    /// # use abes_nice_things::Number;
+    /// # fn main() {
+    /// assert_eq!(usize::get_bits(), usize::BITS);
+    /// # }
+    /// ```
+    fn get_bits() -> u32;
+
     /// Works like max except that it assigns the result to self.
     /// ```no_run
     /// # use abes_nice_things::Number;
@@ -196,6 +233,24 @@ where
     for<'a> &'a Self: std::ops::Neg,
 {
 }
+pub unsafe trait HasAtomic: Integer {
+    type Atomic: AtomicInteger<Counterpart = Self>;
+}
+pub unsafe trait AtomicInteger
+where
+    Self: Sized
+        + Send
+        + Sync
+        + From<Self::Counterpart>
+        + std::fmt::Debug
+        + Default
+        + std::panic::RefUnwindSafe
+        + 'static,
+{
+    type Counterpart: HasAtomic<Atomic = Self>;
+    fn load(&self, ordering: Ordering) -> Self::Counterpart;
+    fn store(&self, val: Self::Counterpart, ordering: Ordering);
+}
 pub trait PrimAs<T> {
     fn prim_as(self) -> T;
 }
@@ -225,8 +280,12 @@ macro_rules! prim_as_helper {
 }
 macro_rules! number_trait_helper_helper {
     ($type:ty) => {
-        const MIN: $type = <$type>::MIN;
-        const MAX: $type = <$type>::MAX;
+        fn get_min() -> $type {
+            <$type>::MIN
+        }
+        fn get_max() -> $type {
+            <$type>::MAX
+        }
         fn max_assign(&mut self, other: $type) {
             *self = (*self).max(other);
         }
@@ -239,14 +298,18 @@ macro_rules! number_trait_helper {
     ($type:ty) => {
         unsafe impl Number for $type {
             number_trait_helper_helper!($type);
-            const BITS: u32 = <$type>::BITS;
+            fn get_bits() -> u32 {
+                <$type>::BITS
+            }
         }
         prim_as_helper!($type);
     };
     ($type:ty, $bits:literal) => {
         unsafe impl Number for $type {
             number_trait_helper_helper!($type);
-            const BITS: u32 = $bits;
+            fn get_bits() -> u32 {
+                $bits
+            }
         }
         prim_as_helper!($type);
     };
@@ -273,6 +336,25 @@ macro_rules! unsigned_integer_trait_helper {
         )*
     }
 }
+macro_rules! atomic_helper {
+    ($type:ty, $atomic:ty) => {
+        unsafe impl HasAtomic for $type {
+            type Atomic = $atomic;
+        }
+        unsafe impl AtomicInteger for $atomic {
+            type Counterpart = $type;
+            fn load(&self, ordering: Ordering) -> Self::Counterpart {
+                self.load(ordering)
+            }
+            fn store(&self, val: Self::Counterpart, ordering: Ordering) {
+                self.store(val, ordering)
+            }
+        }
+    };
+    ($($type:ty = $atomic:ty),*) => {
+        $(atomic_helper!($type, $atomic);)*
+    }
+}
 macro_rules! float_trait_helper {
     ($($type:ty = $bits:literal),*) => {
         $(
@@ -283,4 +365,16 @@ macro_rules! float_trait_helper {
 }
 unsigned_integer_trait_helper!(u8 u16 u32 u64 u128 usize);
 signed_integer_trait_helper!(i8 i16 i32 i64 i128 isize);
+atomic_helper!(
+    u8 = AtomicU8,
+    u16 = AtomicU16,
+    u32 = AtomicU32,
+    u64 = AtomicU64,
+    usize = AtomicUsize,
+    i8 = AtomicI8,
+    i16 = AtomicI16,
+    i32 = AtomicI32,
+    i64 = AtomicI64,
+    isize = AtomicIsize
+);
 float_trait_helper!(f32 = 32, f64 = 64);

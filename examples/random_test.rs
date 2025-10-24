@@ -7,21 +7,20 @@ use abes_nice_things::{
 use std::sync::atomic::*;
 const BITS: usize = 4;
 const ITERATIONS: u64 = u32::MAX as u64;
+const PROGRESS_BAR: ProgressBar<u64> = *ProgressBar::new(0, ITERATIONS, 50)
+    .done_style(*Style::new().cyan().intense(true))
+    .waiting_style(*Style::new().red())
+    .header_char('>')
+    .supplementary_newline(true)
+    .percent_done(true)
+    .eta(true);
 fn main() {
     initialize();
-
-    println!("\n\n\n");
-
     //printer();
-
-    //control();
-
-    //println!("\n\n\n");
-
+    control();
     num_frequency();
-
-    println!("\n\n\n");
-
+    byte_frequency();
+    bit_total_frequency();
     bit_frequency();
 }
 
@@ -33,7 +32,7 @@ fn printer() {
 }
 #[allow(dead_code)]
 fn control() {
-    println!("Control (with black box)");
+    println!("\n\n\nControl (with black box)");
     let start = std::time::Instant::now();
     for _ in 0..ITERATIONS {
         core::hint::black_box(random());
@@ -45,7 +44,7 @@ fn control() {
         elapsed.as_nanos() / ITERATIONS as u128
     );
 
-    println!("Control (without black box)");
+    println!("\n\n\nControl (without black box)");
     let start = std::time::Instant::now();
     for _ in 0..ITERATIONS {
         random();
@@ -58,18 +57,10 @@ fn control() {
     );
 }
 fn num_frequency() {
-    println!("Value frequency:");
+    println!("\n\n\nValue frequency:");
     let mut frequency = [0; const { 1 << BITS }];
     let start = std::time::Instant::now();
-    let mut progress_bar = *ProgressBar::new(ITERATIONS, 50)
-        .done_style(*Style::new().cyan().intense(true))
-        .supplementary_newline(true)
-        //.amount_done(true)
-        .percent_done(true)
-        .waiting_style(*Style::new().red())
-        .header_char('>')
-        .eta(true);
-    //.rate(Some(Rate::Absolute));
+    let mut progress_bar = PROGRESS_BAR;
     progress_bar.draw();
     let progress = (AtomicU64::new(0), AtomicBool::new(false));
     std::thread::scope(|s| {
@@ -124,18 +115,10 @@ fn num_frequency() {
     );
 }
 fn bit_frequency() {
-    println!("Bit frequency:");
+    println!("\n\n\nBit frequency:");
     let mut frequency: [u64; 64] = [0; 64];
     let start = std::time::Instant::now();
-    let mut progress_bar = *ProgressBar::new(ITERATIONS, 50)
-        .done_style(*Style::new().cyan().intense(true))
-        .supplementary_newline(true)
-        //.amount_done(true)
-        .percent_done(true)
-        .waiting_style(*Style::new().red())
-        .header_char('>')
-        .eta(true);
-    //.rate(Some(Rate::Absolute));
+    let mut progress_bar = PROGRESS_BAR;
     progress_bar.draw();
     let progress = (AtomicU64::new(0), AtomicBool::new(false));
     std::thread::scope(|s| {
@@ -171,6 +154,84 @@ fn bit_frequency() {
         println!(
             "{index}: {frequency} ({:.2}%)",
             rel_frequency[index] * 100.0
+        );
+    }
+    println!("Total time: {} seconds", elapsed.as_secs());
+    println!(
+        "Average time: {} nano seconds",
+        elapsed.as_nanos() / ITERATIONS as u128
+    );
+}
+fn byte_frequency() {
+    println!("\n\n\nByte frequency:");
+    let mut frequency = [0_u64; 256];
+    let start = std::time::Instant::now();
+    let mut progress_bar = PROGRESS_BAR;
+    progress_bar.draw();
+    let progress = (AtomicU64::new(0), AtomicBool::new(false));
+    let progress_ref = &progress;
+    std::thread::scope(|s| {
+        let handle = s.spawn(move || {
+            while !progress_ref.1.load(Ordering::Relaxed) {
+                progress_bar.set(progress_ref.0.load(Ordering::Relaxed));
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+            progress_bar
+        });
+        for iteration in 0..ITERATIONS {
+            let random = random();
+            for offset in (0..=56).step_by(8) {
+                frequency[((random >> offset) & 255) as usize] += 1;
+            }
+            if iteration % 10000 == 0 {
+                progress_ref.0.store(iteration, Ordering::Relaxed);
+            }
+        }
+        progress.1.store(true, Ordering::Relaxed);
+        handle.join().unwrap().clear();
+    });
+    let elapsed = start.elapsed();
+    let expected = (ITERATIONS / 256) * 8;
+    println!("Expected: {expected}");
+    println!("Expected percent: {}%", (1.0 / 256.0) * 100.0);
+    let sum: u128 = frequency.map(|freq| freq as u128).iter().sum();
+    for (value, frequency) in frequency.iter().enumerate() {
+        let percent_of_total = (*frequency as f64 / sum as f64) * 100.0;
+        println!("{value}: {frequency} ({percent_of_total:.4}%)");
+    }
+    println!("Total time: {} seconds", elapsed.as_secs());
+    println!(
+        "Average time: {} nano seconds",
+        elapsed.as_nanos() / ITERATIONS as u128
+    );
+}
+fn bit_total_frequency() {
+    println!("\n\n\nBit total frequency:");
+    let mut frequency = [0_u64; 64];
+    let mut progress_bar = PROGRESS_BAR;
+    progress_bar.draw();
+    let proxy = progress_bar.auto_update(std::time::Duration::from_millis(500));
+    let start = std::time::Instant::now();
+    for iteration in 0..ITERATIONS {
+        let random = random();
+        let mut total = 0;
+        for bit in 0..64 {
+            if (random & (1 << bit)) != 0 {
+                total += 1;
+            }
+        }
+        frequency[total] += 1;
+        if iteration % 1000 == 0 {
+            proxy.set(iteration);
+        }
+    }
+    let elapsed = start.elapsed();
+    proxy.finish().unwrap().clear();
+    let sum = frequency.iter().sum::<u64>();
+    for (total, frequency) in frequency.iter().enumerate() {
+        println!(
+            "{total}: {frequency} ({:.2}%)",
+            *frequency as f64 / sum as f64 * 100.0
         );
     }
     println!("Total time: {} seconds", elapsed.as_secs());

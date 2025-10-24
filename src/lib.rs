@@ -131,7 +131,7 @@ macro_rules! debug {
 #[macro_export]
 macro_rules! setter {
     ($field:ident, $type:ty) => {
-        pub fn $field(&mut self, val: $type) -> &mut Self {
+        pub const fn $field(&mut self, val: $type) -> &mut Self {
             self.$field = val;
             self
         }
