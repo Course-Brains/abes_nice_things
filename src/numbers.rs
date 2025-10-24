@@ -87,42 +87,9 @@ where
         + PrimFrom<f64>
         + 'static,
 {
-    /// Gets the minimum value for a number. This is equivalent to using the MIN constant for each
-    /// number primitive:
-    /// ```
-    /// # use abes_nice_things::Number;
-    /// # fn main() {
-    /// assert_eq!(isize::get_min(), isize::MIN)
-    /// # }
-    /// ```
-    /// In almost every case, it is better to just use the constant. However, in cases where you do
-    /// not know which number primitive you are handling and therefore cannot use the constant,
-    /// this will fill that role.
-    fn get_min() -> Self;
-
-    /// Gets the maximum value for a number. This is equivalent to using the MAX constant for each
-    /// number primitive:
-    /// ```
-    /// # use abes_nice_things::Number;
-    /// # fn main() {
-    /// assert_eq!(isize::get_max(), isize::MAX)
-    /// # }
-    /// ```
-    /// In almost every case, it is better to just use the constant. However, in cases where you do
-    /// not know which number primitive you are handling and therefore cannot use the constant,
-    /// this will fill that role.
-    fn get_max() -> Self;
-
-    /// Gets the number of bits for a given number. This is usually equivalent to using the BITS
-    /// constant for the relevant type, but this will work even if you do not know which number
-    /// primitive you are handling.
-    /// ```
-    /// # use abes_nice_things::Number;
-    /// # fn main() {
-    /// assert_eq!(usize::get_bits(), usize::BITS);
-    /// # }
-    /// ```
-    fn get_bits() -> u32;
+    const MIN: Self;
+    const MAX: Self;
+    const BITS: u32;
 
     /// Works like max except that it assigns the result to self.
     /// ```no_run
@@ -158,6 +125,7 @@ where
 pub unsafe trait Integer: Number
 where
     Self: Ord
+        + std::fmt::Binary
         + Eq
         + std::ops::Shl
         + std::ops::ShlAssign
@@ -245,6 +213,7 @@ where
         + std::fmt::Debug
         + Default
         + std::panic::RefUnwindSafe
+        + Binary
         + 'static,
 {
     type Counterpart: HasAtomic<Atomic = Self>;
@@ -280,12 +249,8 @@ macro_rules! prim_as_helper {
 }
 macro_rules! number_trait_helper_helper {
     ($type:ty) => {
-        fn get_min() -> $type {
-            <$type>::MIN
-        }
-        fn get_max() -> $type {
-            <$type>::MAX
-        }
+        const MIN: $type = <$type>::MIN;
+        const MAX: $type = <$type>::MAX;
         fn max_assign(&mut self, other: $type) {
             *self = (*self).max(other);
         }
@@ -298,18 +263,14 @@ macro_rules! number_trait_helper {
     ($type:ty) => {
         unsafe impl Number for $type {
             number_trait_helper_helper!($type);
-            fn get_bits() -> u32 {
-                <$type>::BITS
-            }
+            const BITS: u32 = <$type>::BITS;
         }
         prim_as_helper!($type);
     };
     ($type:ty, $bits:literal) => {
         unsafe impl Number for $type {
             number_trait_helper_helper!($type);
-            fn get_bits() -> u32 {
-                $bits
-            }
+            const BITS: u32 = $bits;
         }
         prim_as_helper!($type);
     };
