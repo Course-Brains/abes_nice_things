@@ -171,97 +171,48 @@ mod f1 {
     // 3: name: String
     // 4: data: [u8]
     use crate::{quiet, Settings, QUIET};
-    use abes_nice_things::{input, FromBinary, Input, ToBinary};
+    use abes_nice_things::{
+        input, progress_bar::Rate, FromBinary, Input, ProgressBar, Style, ToBinary,
+    };
     use std::io::{Read, Write};
     use std::net::TcpStream;
     // Assumed to be less than 2^32
     const BUFFER_SIZE: u64 = 1000;
-    // A thing for keeping track of how much has been written
-    // since the last print, and when that was
-    struct Tracker {
-        written: u64,
-        total_written: u64,
-        previous: Option<std::time::Instant>,
-    }
-    impl Tracker {
-        // The threshold for when we should print again
-        const THRESHOLD: std::time::Duration = std::time::Duration::from_millis(500);
-        const BAR_LENGTH: usize = 50;
-        fn display(&mut self, total: u64) {
-            if QUIET.load(std::sync::atomic::Ordering::Relaxed) {
-                return;
-            }
-            if let Some(previous) = self.previous {
-                // Get the time elapsed and check if we are printing
-                let diff = previous.elapsed();
-                if !(diff > Tracker::THRESHOLD) {
-                    // We should not print yet
-                    return;
-                }
-                // Important that we don't let go of stdout for this
-                let mut stdout = std::io::stdout().lock();
-                // Delete the current line
-                stdout.write_fmt(format_args!("\r")).unwrap();
-                // Assuming that it will be close enough to 1 second
-                let rate = Rate(self.written);
-                let percent_done = match self.total_written {
-                    0 => 0.0,
-                    written => (written as f64) / (total as f64),
-                };
-                let filled = ((Tracker::BAR_LENGTH as f64) * percent_done) as usize;
-                let unfilled = Tracker::BAR_LENGTH - filled;
-                stdout
-                    .write(
-                        ("[".to_string() + &"#".repeat(filled) + &"-".repeat(unfilled) + &"] ")
-                            .as_bytes(),
-                    )
-                    .unwrap();
-                stdout
-                    .write_fmt(format_args!("%{:.3} ", percent_done * 100.0))
-                    .unwrap();
-                stdout.write_fmt(format_args!("{rate}")).unwrap();
-                stdout.flush().unwrap();
-            }
-            self.written = 0;
-            self.previous = Some(std::time::Instant::now());
-        }
-    }
-    struct Rate(u64);
-    impl std::fmt::Display for Rate {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            if self.0 < 1000 {
-                // Showing in bytes
-                write!(f, "{} B/s", self.0)
-            } else if self.0 < 1000000 {
-                // Showing in kilo bytes
-                write!(f, "{} KB/s", self.0 / 1000)
-            } else {
-                // Showing in mega bytes
-                write!(f, "{} MB/s", self.0 / 1000000)
-            }
-            // I'm not accounting for giga bytes per second, fuck that
-        }
-    }
-    fn transfer(mut from: impl Read, mut to: impl Write, len: u64, tracker: &mut Tracker) {
+    fn transfer(mut from: impl Read, mut to: impl Write, len: u64) {
+        let progress_bar = match QUIET.load(std::sync::atomic::Ordering::Relaxed) {
+            true => None,
+            false => Some(
+                *ProgressBar::new(0, len, 50)
+                    .done_style(*Style::new().cyan().intense(true))
+                    .waiting_style(*Style::new().red())
+                    .supplementary_newline(true)
+                    .percent_done(true)
+                    .rate(Some(Rate::Bytes))
+                    .eta(true),
+            ),
+        };
+        let proxy = progress_bar.map(|mut bar| {
+            bar.draw();
+            bar.auto_update(std::time::Duration::from_millis(500))
+        });
         let mut buf = const { [0_u8; BUFFER_SIZE as usize] };
-        let mut remaining = len;
+        let mut remaining = 0;
         while remaining > BUFFER_SIZE {
-            //std::thread::sleep(std::time::Duration::from_millis(10));
-            //println!("Transfering section of size: {BUFFER_SIZE}: {remaining} remaining");
             // First the buffer sized chunks
             from.read_exact(&mut buf).unwrap();
             to.write_all(&mut buf).unwrap();
             remaining -= BUFFER_SIZE;
-            tracker.written += BUFFER_SIZE;
-            tracker.total_written += BUFFER_SIZE;
-            tracker.display(len);
+            if let Some(proxy) = &proxy {
+                proxy.set(len - remaining);
+            }
         }
         // Then the remainder
-        //println!("Transfering last section of len: {remaining}");
         let mut buf = vec![0_u8; remaining as usize];
         from.read_exact(&mut buf).unwrap();
         to.write_all(&mut buf).unwrap();
-        //println!("Done transfering");
+        if let Some(proxy) = proxy {
+            proxy.finish().unwrap().clear();
+        }
     }
     pub fn send(mut stream: TcpStream, settings: Settings) {
         let path = settings.path.unwrap_or_else(|| {
@@ -298,12 +249,7 @@ mod f1 {
 
         // Sending over the data
         quiet!("Sending data\n");
-        let mut tracker = Tracker {
-            written: 0,
-            total_written: 0,
-            previous: None,
-        };
-        transfer(file, stream, len, &mut tracker);
+        transfer(file, stream, len);
         quiet!("Data sent");
     }
     pub fn recv(mut stream: TcpStream, settings: Settings) {
@@ -322,12 +268,7 @@ mod f1 {
         }
         quiet!("Recieving {path}");
         let file = std::fs::File::create(path).unwrap();
-        let mut tracker = Tracker {
-            written: 0,
-            total_written: 0,
-            previous: None,
-        };
-        transfer(stream, file, len, &mut tracker);
+        transfer(stream, file, len);
         quiet!("Recieved");
     }
 }

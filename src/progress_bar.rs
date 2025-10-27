@@ -22,6 +22,7 @@ pub struct ProgressBar<T: UnsignedInteger> {
     rate: Option<Rate>,
     eta: bool,
     prev: Option<(std::time::SystemTime, T)>,
+    timer: Timer,
 }
 impl<T: UnsignedInteger> ProgressBar<T> {
     pub const fn new(initial: T, target: T, visual_len: T) -> ProgressBar<T> {
@@ -41,6 +42,7 @@ impl<T: UnsignedInteger> ProgressBar<T> {
             rate: None,
             eta: false,
             prev: None,
+            timer: Timer::MostRecent,
         }
     }
     setter!(
@@ -56,6 +58,9 @@ impl<T: UnsignedInteger> ProgressBar<T> {
         waiting_char = char,
         rate = Option<Rate>,
         eta = bool,
+        visual_len = T,
+        target = T,
+        timer = Timer,
     );
     pub fn draw(&mut self) {
         assert!(self.current <= self.target);
@@ -125,12 +130,26 @@ impl<T: UnsignedInteger> ProgressBar<T> {
                 }
             }
             if self.eta {
-                let eta =
-                    <T as PrimAs<f64>>::prim_as(self.target - self.current) / value_per_second;
-                print!(" eta: {eta:.2}s");
+                let mut seconds = (<T as PrimAs<f64>>::prim_as(self.target - self.current)
+                    / value_per_second) as u64;
+                let days = seconds / 86400;
+                seconds %= 86400;
+                let hours = seconds / 3600;
+                seconds %= 3600;
+                if days >= 1 {
+                    print!(" eta: {days} days, {hours} hours, {seconds} seconds");
+                } else if hours >= 1 {
+                    print!(" eta {hours} hours, {seconds} seconds");
+                } else {
+                    print!(" eta: {seconds} seconds");
+                }
             }
+        } else if let Timer::Mean = self.timer {
+            self.prev = Some((now, self.current));
         }
-        self.prev = Some((now, self.current));
+        if let Timer::MostRecent = self.timer {
+            self.prev = Some((now, self.current));
+        }
         std::io::stdout().flush().unwrap();
     }
     pub fn clear(&self) {
@@ -180,4 +199,12 @@ impl<T: UnsignedInteger + HasAtomic> Proxy<T> {
         std::mem::drop(self.arc);
         self.handle.join()
     }
+    pub unsafe fn raw_proxy(&self) -> Arc<T::Atomic> {
+        self.arc.clone()
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Timer {
+    MostRecent,
+    Mean,
 }

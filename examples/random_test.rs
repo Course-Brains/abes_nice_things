@@ -1,12 +1,13 @@
 use abes_nice_things::{
-    //progress_bar::Rate,
-    random::{initialize, random},
-    ProgressBar,
-    Style,
+    progress_bar::Timer,
+    random::{initialize, random, raw_random},
+    ProgressBar, Style,
 };
-use std::sync::atomic::*;
+use std::io::{BufRead, Read, Write};
+use std::{io::Seek, sync::atomic::*};
 const BITS: usize = 4;
 const ITERATIONS: u64 = u32::MAX as u64;
+const BATCH_SIZE: usize = 1000000;
 const PROGRESS_BAR: ProgressBar<u64> = *ProgressBar::new(0, ITERATIONS, 50)
     .done_style(*Style::new().cyan().intense(true))
     .waiting_style(*Style::new().red())
@@ -14,6 +15,7 @@ const PROGRESS_BAR: ProgressBar<u64> = *ProgressBar::new(0, ITERATIONS, 50)
     .supplementary_newline(true)
     .percent_done(true)
     .eta(true);
+
 fn main() {
     initialize();
     //printer();
@@ -22,6 +24,10 @@ fn main() {
     byte_frequency();
     bit_total_frequency();
     bit_frequency();
+    if let Some((duplicate, batch)) = repeat_finder() {
+        println!("Cycle found in batch {batch}, measuring size...");
+        println!("Size: {}", cycle_counter(duplicate).unwrap())
+    }
 }
 
 #[allow(dead_code)]
@@ -56,6 +62,7 @@ fn control() {
         elapsed.as_nanos() / ITERATIONS as u128
     );
 }
+#[allow(dead_code)]
 fn num_frequency() {
     println!("\n\n\nValue frequency:");
     let mut frequency = [0; const { 1 << BITS }];
@@ -114,6 +121,7 @@ fn num_frequency() {
         (elapsed / u32::MAX).as_nanos()
     );
 }
+#[allow(dead_code)]
 fn bit_frequency() {
     println!("\n\n\nBit frequency:");
     let mut frequency: [u64; 64] = [0; 64];
@@ -162,6 +170,7 @@ fn bit_frequency() {
         elapsed.as_nanos() / ITERATIONS as u128
     );
 }
+#[allow(dead_code)]
 fn byte_frequency() {
     println!("\n\n\nByte frequency:");
     let mut frequency = [0_u64; 256];
@@ -205,6 +214,7 @@ fn byte_frequency() {
         elapsed.as_nanos() / ITERATIONS as u128
     );
 }
+#[allow(dead_code)]
 fn bit_total_frequency() {
     println!("\n\n\nBit total frequency:");
     let mut frequency = [0_u64; 64];
@@ -239,4 +249,213 @@ fn bit_total_frequency() {
         "Average time: {} nano seconds",
         elapsed.as_nanos() / ITERATIONS as u128
     );
+}
+fn repeat_finder() -> Option<(u64, u64)> {
+    println!("\n\n\nRepeat finder");
+    let mut random = abes_nice_things::random::get_initializer();
+    println!("Starting at {random}");
+    let mut write = std::fs::File::create("list").unwrap();
+    let mut read = std::io::BufReader::new(std::fs::File::open("list").unwrap());
+    let mut progress_bar = *PROGRESS_BAR
+        .clone()
+        .amount_done(true)
+        .target(ITERATIONS / BATCH_SIZE as u64)
+        .rate(Some(abes_nice_things::progress_bar::Rate::Absolute))
+        .timer(Timer::Mean);
+    progress_bar.draw();
+    let proxy = progress_bar.auto_update(std::time::Duration::from_millis(500));
+    let mut buf = [0; 8];
+    let start = std::time::Instant::now();
+    //let mut duplicates = std::collections::HashSet::new();
+    for iteration in 0..(ITERATIONS / BATCH_SIZE as u64) {
+        let mut generated = std::collections::HashSet::with_capacity(BATCH_SIZE);
+        for _ in 0..BATCH_SIZE {
+            random = raw_random(random);
+            if generated.contains(&random) {
+                proxy.finish().unwrap().clear();
+                return Some((random, iteration));
+                //panic!("FOUND DUPLICATE: {random} after {iteration}");
+                //duplicates.insert(random);
+            }
+            generated.insert(random);
+        }
+        read.rewind().unwrap();
+        read.consume(read.buffer().len());
+        loop {
+            if let Err(std::io::ErrorKind::UnexpectedEof) =
+                read.read_exact(&mut buf).map_err(|x| x.kind())
+            {
+                break;
+            }
+            let check = u64::from_ne_bytes(buf);
+            if generated.contains(&check) {
+                proxy.finish().unwrap().clear();
+                return Some((random, iteration));
+                //duplicates.insert(check);
+                //panic!("FOUND DUPLICATE: {random} after {iteration}");
+            }
+        }
+        for num in generated.iter() {
+            write.write_all(&num.to_ne_bytes()).unwrap();
+        }
+        write.sync_data().unwrap();
+        proxy.set(iteration);
+    }
+    proxy.finish().unwrap().clear();
+    let elapsed = start.elapsed();
+
+    /*println!("Repetitions:");
+    for (index, duplicate) in duplicates.iter().enumerate() {
+        println!("{index}: {duplicate}");
+    }*/
+
+    println!("Total time: {}", elapsed.as_secs());
+    println!(
+        "No repetition found in all {} batches, congrats!",
+        ITERATIONS / BATCH_SIZE as u64
+    );
+    None
+}
+fn cycle_counter(initial: u64) -> Option<u64> {
+    //let initial = abes_nice_things::random::get_initializer();
+    let mut random = initial;
+    let mut progress_bar = PROGRESS_BAR;
+    progress_bar.draw();
+    let proxy = progress_bar.auto_update(std::time::Duration::from_millis(500));
+    let start = std::time::Instant::now();
+    for iteration in 0..ITERATIONS {
+        random = raw_random(random);
+        if random == initial {
+            proxy.finish().unwrap().clear();
+            return Some(iteration);
+        }
+        if iteration % 10000 == 0 {
+            proxy.set(iteration);
+        }
+    }
+    let elapsed = start.elapsed();
+    proxy.finish().unwrap().clear();
+    println!("No cycle found!");
+    println!("Time taken: {} seconds", elapsed.as_secs());
+    println!(
+        "Average time: {} nano seconds",
+        elapsed.as_nanos() / ITERATIONS as u128
+    );
+    None
+}
+fn repeat_finder_threaded() {
+    println!("\n\n\nRepeat finder threaded");
+    let mut write = std::fs::File::create("list").unwrap();
+    let (writer, writer_rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || loop {
+        let data: u64 = writer_rx.recv().unwrap();
+        write.write_all(&data.to_ne_bytes()).unwrap();
+    });
+    let mut sections = Vec::new();
+    for i in 0_u64..10_u64 {
+        sections.push(((ITERATIONS / 11) * i)..((ITERATIONS / 11) * (i + 1)));
+    }
+    let mut progress_bar = *PROGRESS_BAR.clone().amount_done(true);
+    progress_bar.draw();
+    let proxy = progress_bar.auto_update(std::time::Duration::from_millis(500));
+    let raw_proxy = unsafe { proxy.raw_proxy() };
+
+    let mut threads: Vec<ThreadAsync<Option<u64>>> = sections
+        .iter()
+        .map(|range| {
+            ThreadAsync::new(repeat_finder_helper(
+                range.start,
+                range.end,
+                raw_proxy.clone(),
+                writer.clone(),
+            ))
+        })
+        .collect();
+
+    loop {
+        let mut done = true;
+        for thread in threads.iter_mut() {
+            if let Some(output) = thread.poll() {
+                done = false;
+                if let Some(duplicate) = output {
+                    panic!("Found duplicate at {duplicate}");
+                }
+            }
+        }
+        if done {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_secs(10));
+    }
+
+    proxy.finish().unwrap().clear();
+}
+fn repeat_finder_helper(
+    start: u64,
+    end: u64,
+    proxy: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    writer: std::sync::mpsc::Sender<u64>,
+) -> std::thread::JoinHandle<Option<u64>> {
+    std::thread::spawn(move || {
+        let mut read = std::io::BufReader::new(std::fs::File::open("list").unwrap());
+        let mut buf = [0_u8; 8];
+        for place in start..end {
+            let random = raw_random(place);
+            read.rewind().unwrap();
+            read.consume(read.buffer().len());
+            loop {
+                if let Err(std::io::ErrorKind::UnexpectedEof) =
+                    read.read_exact(&mut buf).map_err(|x| x.kind())
+                {
+                    break;
+                }
+                let check = u64::from_ne_bytes(buf);
+                if random == check {
+                    return Some(place);
+                }
+            }
+            writer.send(random).unwrap();
+            proxy.fetch_add(1, Ordering::Relaxed);
+        }
+        None
+    })
+}
+enum ThreadAsync<T: Send + 'static> {
+    Data(T),
+    Handle(std::thread::JoinHandle<T>),
+}
+impl<T: Clone + Send + 'static> ThreadAsync<T> {
+    fn new(handle: std::thread::JoinHandle<T>) -> Self {
+        Self::Handle(handle)
+    }
+    fn update(&mut self) {
+        if let Self::Handle(handle) = self {
+            let mut swap_handle = std::thread::spawn(|| {
+                loop {}
+                todo!()
+            });
+            std::mem::swap(handle, &mut swap_handle);
+            *self = Self::Data(swap_handle.join().unwrap());
+        }
+    }
+    fn get_if_available(&self) -> Option<&T> {
+        match self {
+            Self::Data(data) => Some(data),
+            Self::Handle(_) => None,
+        }
+    }
+    fn get_mut_if_available(&mut self) -> Option<&mut T> {
+        match self {
+            Self::Data(data) => Some(data),
+            Self::Handle(_) => None,
+        }
+    }
+    fn poll(&mut self) -> Option<&T> {
+        self.update();
+        self.get_if_available()
+    }
+    fn poll_mut(&mut self) -> Option<&mut T> {
+        self.update();
+        self.get_mut_if_available()
+    }
 }

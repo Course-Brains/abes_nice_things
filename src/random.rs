@@ -1,7 +1,11 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 static INDEX: AtomicU64 = AtomicU64::new(0);
 pub fn random() -> u64 {
-    let mut val = INDEX.load(Ordering::Relaxed);
+    let random = raw_random(INDEX.load(Ordering::Relaxed));
+    INDEX.store(random, Ordering::Relaxed);
+    random
+}
+pub fn raw_random(mut val: u64) -> u64 {
     //let mut val = INDEX.fetch_add(1, Ordering::Relaxed);
     let prev = val;
     val = val.wrapping_sub(5);
@@ -13,7 +17,6 @@ pub fn random() -> u64 {
     val = unsafe { std::mem::transmute(val_split) };
     val = byte_shuffle(val);
     val = val.rotate_left(11);
-    INDEX.store(val, Ordering::Relaxed);
     val
 }
 #[inline(always)]
@@ -31,7 +34,7 @@ fn byte_shuffle(mut val: u64) -> u64 {
     val = u64::from_le_bytes(le_bytes);
     val
 }
-pub fn initialize() {
+pub fn get_initializer() -> u64 {
     let mut start = std::process::id() as u64;
     start = start.wrapping_add(
         (std::time::SystemTime::now()
@@ -49,6 +52,8 @@ pub fn initialize() {
             .len()
             .rotate_left(32) as u64,
     );
-    println!("Starting at: {start}");
-    INDEX.store(start, Ordering::Relaxed);
+    start
+}
+pub fn initialize() {
+    INDEX.store(get_initializer(), Ordering::Relaxed);
 }
