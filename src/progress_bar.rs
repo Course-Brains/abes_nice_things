@@ -25,6 +25,17 @@ pub struct ProgressBar<T: UnsignedInteger> {
     timer: Timer,
 }
 impl<T: UnsignedInteger> ProgressBar<T> {
+    /// Creates a new bar with the given initial value, target value, and visual length. This
+    /// creates a fairly bare bones progress bar. Specifically it creates a bar with no extra data
+    /// and no [styling](crate::Style). It creates a bar that has '=' to show the completed area, '-'
+    /// to show the uncompleted are, and '>' to connect them. Causing it to look approximately
+    /// like:
+    ///
+    /// [================>--------]
+    ///
+    /// If you do not want it to look like that, use the other methods.
+    ///
+    /// Notably, this does not draw the bar, only creates the [ProgressBar] instance.
     pub const fn new(initial: T, target: T, visual_len: T) -> ProgressBar<T> {
         ProgressBar {
             current: initial,
@@ -125,7 +136,7 @@ impl<T: UnsignedInteger> ProgressBar<T> {
                         } else {
                             (1.0, ' ')
                         };
-                        print!(" {}{prefix}Bytes", value_per_second / divisor);
+                        print!(" {}{prefix}B", value_per_second / divisor);
                     }
                 }
             }
@@ -152,6 +163,23 @@ impl<T: UnsignedInteger> ProgressBar<T> {
         }
         std::io::stdout().flush().unwrap();
     }
+    /// Clears the previously drawn progress bar so that it can be drawn again. If this is run
+    /// before the progress bar is initially drawn, then it will remove text from the
+    /// terminal. Generally it is better to use [set](ProgressBar::set) because it will clear,
+    /// update, and redraw the progress bar, but this is useful to remove a completed bar.
+    /// ```
+    /// # use abes_nice_things::ProgressBar;
+    /// # fn main() {
+    /// let mut bar = ProgressBar::new(0_usize, 100, 50);
+    /// // Initially draw the bar
+    /// bar.draw();
+    ///
+    /// // Do things with the bar
+    ///
+    /// // Clean up
+    /// bar.clear();
+    /// # }
+    /// ```
     pub fn clear(&self) {
         if self.supplementary_newline {
             print!("\r\x1b[2K\x1b[A\x1b[2K");
@@ -164,6 +192,21 @@ impl<T: UnsignedInteger> ProgressBar<T> {
         self.current = new_val;
         self.draw();
     }
+    /// Sets up the progress bar to automatically update the visuals and gives back a [Proxy] which
+    /// is used to enable that.
+    ///
+    /// # Example:
+    /// ```
+    /// # use abes_nice_things::ProgressBar;
+    /// # fn main() {
+    /// let mut progress_bar = ProgressBar::new(0_usize, 100, 50);
+    /// progress_bar.draw();
+    /// let proxy = progress_bar.auto_update(std::time::Duration::from_millis(500));
+    ///
+    ///
+    ///
+    /// # }
+    /// ```
     pub fn auto_update(mut self, interval: std::time::Duration) -> Proxy<T>
     where
         T: HasAtomic,
@@ -182,7 +225,9 @@ impl<T: UnsignedInteger> ProgressBar<T> {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Rate {
+    /// Rate shown as the float calculated for rate with two decimal places.
     Absolute,
+    /// Rate shown as bytes with the correct suffixes up to gigabytes per second.
     Bytes,
 }
 pub struct Proxy<T: UnsignedInteger + HasAtomic> {
@@ -205,6 +250,9 @@ impl<T: UnsignedInteger + HasAtomic> Proxy<T> {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Timer {
+    /// Uses the value at the most recent draw to calculate the rate of progress and eta
     MostRecent,
+    /// Uses the first value (creating effectively a mean) to calculate the rate of progress and
+    /// eta
     Mean,
 }

@@ -1,131 +1,63 @@
-use std::convert::Infallible;
-/// This is a type which is similar to [OpenOptions](std::fs::OpenOptions)
-/// and is used to get input from the terminal.
-/// The simplest way to use this is to just get input with no
-/// message or condition:
+/// This is a type to make getting input from the terminal easier. It even gets rid of the newline
+/// for you! The basic usage is:
 /// ```no_run
 /// # use abes_nice_things::Input;
 /// # fn main() {
-/// let input: String = <Input>::new().get().unwrap();
+/// let input = <Input>::new().get();
 /// # }
 /// ```
-/// As you may have noticed, we need to [unwrap](Result::unwrap)
-/// the what is returned after we get input from the terminal.
-/// In order to explain that I have to explain the various options
-/// for this type.
-/// # msg
-/// You can define a message to be displayed every time
-/// it attempts to get information from the terminal.
-/// This message will be [printed](println) above where
-/// they actually input data:
-/// ```terminal
-/// [Your message]
-/// [where they would be typing]
-/// ```
-/// This message does have to be constant, but you can
-/// define it after creating an [Input] instance
-/// by using the [msg](Input::msg) method.
-/// ```
-/// # use abes_nice_things::Input;
-/// # fn main() {
-/// <Input>::new().msg("Whatever you want");
-/// # }
-/// ```
-/// Notably, if no message is provided,
-/// running [get](Input::get) will not
-/// cause a newline to be [printed](println),
-/// meaning that it will not cause a gap such as
-/// ```terminal
+/// Although, if you are going to do that then I would recommend just using [input]
+/// which makes getting a [String] of input from the terminal easier than using this.
 ///
-/// [where you type]
-/// ```
-/// to occur.
-/// # cond
-/// While being able to define a message is nice,
-/// sometimes you need to restrict the possible
-/// responses or sometimes getting the input
-/// itself can fai to meet your conditions.
-/// To allow this to happen, you can give a
-/// closure that will be run with the [String]
-/// given by the user as an input.
-/// This closure must return either [Ok] containing
-/// a bool indicating whether or not it is done
-/// getting input. Specifically, if [true] is returned
-/// by the closure, [get](Input::get) will return
-/// [Ok] containing the string passed to the closure.
-/// However, if [false] is returned by the closure,
-/// it will re-attempt to get input from the terminal
-/// and will re-send the message.
-/// For instance, if only returning y or n was valid,
-/// then this could be what would happen with the
-/// message of "Give me y or n"
-/// ```terminal
-/// Give me y or n
-/// I don't want to
-/// Give me y or n
-/// Y
-/// Give me y or n
-/// y
-/// ```
-/// As is shown, the the default condition given by
-/// [yn](Input::yn) is case sensitive, which caused
-/// it to only stop after being given exactly 'y' or
-/// 'n' not 'Y' or 'N'. However, if you wanted to fix
-/// this, you could make your own condition:
-/// ```
-/// # use abes_nice_things::Input;
-/// # fn main() {
-/// <Input>::new().cond(& |string| {
-///     match string.to_lowercase().as_str() {
-///         "y"|"n" => return Ok(true),
-///         _ => return Ok(false)
-///     }
-/// });
-/// # }
-/// ```
-/// You can set either of them while chaining method
-/// calls together because they all return &mut [Input]
+/// What this is good at is conditionally giving back input from the user if it meets your
+/// conditions and printing a prompt every time you try to get input.
+///
+/// # The message
+/// The message is a bit of text which is printed just before this gets input from the user in order
+/// to instruct them on what to type. The message is printed with a newline so the user will be
+/// typing on the line below the message. It is specified as such:
 /// ```no_run
 /// # use abes_nice_things::Input;
 /// # fn main() {
-/// let input: String = <Input>::new()
-///     .msg("some message")
-///     .cond(&|string| {
-///         // Some condition
-///         # return Ok(true)
-///     })
-///     .get().unwrap();
+/// let input = <Input>::new().msg("Gimme a String!").get();
 /// # }
 /// ```
-/// If needed, the condition can return an error,
-/// which will stop all attempts to get input and
-/// will return that error. However, because most
-/// of the time, that is not needed, the default
-/// error type is [Infallible].
-pub struct Input<'a, E = Infallible> {
-    msg: Option<&'a str>,
-    cond: Option<&'a dyn Fn(&String) -> Result<bool, E>>,
+/// # The mapper
+/// The mapper has two roles. It determines whether or not it needs to get another input from the
+/// user. It also does any needed conversion from the inputted [String] to whatever output you
+/// need.
+///
+/// As an example, this is the mapper set by the method [yn](Input::yn)
+/// ```no_run
+/// # use abes_nice_things::Input;
+/// # fn main() {
+/// let input = <Input>::new().mapper(|string| {
+///     match string.as_str() {
+///         "y" => Some(true),
+///         "n" => Some(false),
+///         _ => None
+///     }
+/// }).get();
+/// # }
+/// ```
+/// As shown, the mapper closure takes in a [String] and returns an [Option].
+/// If it returns Some, then it will stop getting input and pass the value in the Some out to the
+/// caller. However, if it returns None then it will try again to get input from the user. An
+/// important detail is that every time it tries to get input from the terminal, it prints out the
+/// message, if there is one.
+pub struct Input<T = String> {
+    msg: Option<String>,
+    mapper: Option<Box<dyn Fn(String) -> Option<T>>>,
 }
-impl<'a, E> Input<'a, E> {
-    /// This gets input from the terminal using the
-    /// given settings. It does return a [Result],
-    /// so in order to access the actual input, you
-    /// will need to handle it, most of the time by
-    /// [unwrap](Result::unwrap)ing it.
-    /// ```no_run
-    /// # use abes_nice_things::Input;
-    /// # fn main() {
-    /// let input: String = <Input>::new().get().unwrap();
-    /// # }
-    /// ```
-    /// Notably, the [String] will be returned *without*
-    /// the trailing new line.
+impl<T> Input<T> {
+    /// This actually gets input from the user with the settings you have chosen. If you are trying
+    /// to figure out how to actually trigger it to get input, this is how.
     ///
-    /// For more information see the type level
-    /// [documentation](Input)
-    pub fn get(&self) -> Result<String, E> {
+    /// It isn't complicated, you set your settings with the other methods, then call this one and
+    /// it'll do the stuff.
+    pub fn get(&self) -> T {
         loop {
-            if let Some(msg) = self.msg {
+            if let Some(msg) = &self.msg {
                 println!("{msg}")
             }
 
@@ -138,147 +70,72 @@ impl<'a, E> Input<'a, E> {
             #[cfg(target_os = "windows")]
             string.pop();
 
-            return Ok(match &self.cond {
-                Some(cond) => {
-                    if cond(&string)? {
-                        string
-                    } else {
-                        continue;
-                    }
+            if let Some(mapper) = &self.mapper {
+                match (mapper)(string) {
+                    Some(out) => break out,
+                    None => continue,
                 }
-                None => string,
-            });
+            }
         }
     }
-    /// This creates an instance of [Input]
-    /// with the default settings of no
-    /// message and no condition.
+    /// This creates an instance of [Input] with no message and no mapper. If you do not understand
+    /// what those mean, read the docs for the type itself.
     ///
-    /// For more information see the type level
-    /// [documentation](Input)
+    /// There is one special part about this, because of complicated generic things that I will not
+    /// be explaining in this, the easiest way to run this is with < and > around [Input] like so
+    /// ```
+    /// # use abes_nice_things::Input;
+    /// # fn main() {
+    /// let input = <Input>::new();
+    /// # }
+    /// ```
+    /// If you want to know more about why that is a good idea, try running it without it and snoop
+    /// around.
     pub fn new() -> Self {
         Self {
             ..Default::default()
         }
     }
-    /// This creates an instance of [Input]
-    /// with settings of no message, and
-    /// a condition that will only allow input
-    /// which is either "y" or "n". Notably
-    /// this is case sensitive.
+    /// This creates a new [Input] instance except that it will repeatedly try to get either 'y' or
+    /// 'n' from the user and it will give back [true] and [false] for them respectively.
     ///
-    /// For more information, see the type level
-    /// [documentation](Input)
-    pub fn yn() -> Self {
-        Self {
-            cond: Some(&|string: &String| match string.as_str() {
-                "y" | "n" => Ok(true),
-                _ => Ok(false),
-            }),
+    /// The way you use it is the same as with [new](Input::new) so if you want to know how, go
+    /// read that.
+    pub fn yn() -> Input<bool> {
+        Input {
+            mapper: Some(Box::new(|input| match input.as_str() {
+                "y" => Some(true),
+                "n" => Some(false),
+                _ => None,
+            })),
             ..Default::default()
         }
     }
-    /// This defines the printed message.
-    /// This message will be printed on the line
-    /// above where the input is given
-    /// ```terminal
-    /// [message is here]
-    /// [input is here]
-    /// ```
-    /// In order to set the message, you need
-    /// to give this method a &[str] with the message
-    /// you want printed. For example:
-    /// ```
-    /// # use abes_nice_things::Input;
-    /// # fn main() {
-    /// <Input>::new().msg("Something idk").get().unwrap();
-    /// # }
-    /// ```
-    /// will cause the following in the terminal
-    /// ```terminal
-    /// Something idk
-    /// [area to be typed in]
-    /// ```
-    /// For more information, see the type level
-    /// [documentation](Input)
-    pub fn msg(&mut self, msg: &'a str) -> &mut Self {
-        self.msg = Some(msg);
+    /// This sets the message used by the input
+    pub fn msg<S: ToString>(mut self, msg: S) -> Self {
+        self.msg = Some(msg.to_string());
         self
     }
-    /// This will clear any message that has been
-    /// given to [Input] and will revert it to
-    /// the state of not having a message.
-    /// Meaning that it will not print an empty
-    /// line.
-    ///
-    /// For more information, see the type level
-    /// [documentation](Input)
-    pub fn clear_msg(&mut self) -> &mut Self {
+    pub fn clear_msg(mut self) -> Self {
         self.msg = None;
         self
     }
-    /// This will set the condition used by [Input]
-    /// The condition must take in the string given
-    /// to the terminal(without the trailing newline
-    /// of course). It must return a [Result] with
-    /// either [Ok] containing a [bool] representing
-    /// whether or not you are done getting input.
-    /// Specifically, if [true] is given, it will stop
-    /// collecting input and will return the [String]
-    /// which resulted in [true] being returned by the
-    /// closure. While [false] will cause it to repeat
-    /// the input getting sequence again until [true]
-    /// is returned(each run being done with the results
-    /// of getting input from the terminal each time,
-    /// meaning that each subsequent run requires another
-    /// input to the terminal from the user).
-    /// For example, the condition used
-    /// by [yn](Input::yn) to enforce only y or n being
-    /// returned could be done as shown
-    /// ```no_run
-    /// # use abes_nice_things::Input;
-    /// # fn main() {
-    /// let input: String = <Input>::new()
-    ///     .cond(&|string| {
-    ///         match string.as_str() {
-    ///             "y"|"n" => return Ok(true),
-    ///             _ => return Ok(false)
-    ///         }
-    ///     })
-    ///     .get().unwrap();
-    /// # }
-    /// ```
-    /// Notably, [Ok] is returned no matter what in this
-    /// example, that is because there is no reason to
-    /// fully stop getting input no matter what input
-    /// is given from the user. If that is not the case
-    /// when you use this, you can return [Err] and
-    /// the error you want to be returned from [get](Input::get).
-    /// If you are curious, the default error type is [Infallible]
-    ///
-    /// For more information, see the type level [documentation](Input)
-    pub fn cond<F: Fn(&String) -> Result<bool, E> + 'static>(&mut self, cond: &'a F) -> &mut Self {
-        self.cond = Some(cond);
-        self
+    pub fn mapper<O>(self, mapper: impl Fn(String) -> Option<O> + 'static) -> Input<O> {
+        Input {
+            msg: self.msg,
+            mapper: Some(Box::new(mapper)),
+        }
     }
-    /// This will clear any condition set by
-    /// [cond](Input::cond) and will return it
-    /// to the state of having no checks,
-    /// meaning it will return whatever is
-    /// given by the user.
-    ///
-    /// For more information, see the type level
-    /// [documentation](Input)
-    pub fn clear_cond(&mut self) -> &mut Self {
-        self.cond = None;
+    pub fn clear_mapper(mut self) -> Self {
+        self.mapper = None;
         self
     }
 }
-impl<E> Default for Input<'_, E> {
+impl<T> Default for Input<T> {
     fn default() -> Self {
         Self {
             msg: None,
-            cond: None,
+            mapper: None,
         }
     }
 }
@@ -298,12 +155,12 @@ impl<E> Default for Input<'_, E> {
 /// ```no_run
 /// # use abes_nice_things::Input;
 /// # fn main() {
-/// <Input>::new().get().unwrap()
+/// <Input>::new().get()
 /// # ;
 /// # }
 /// ```
 /// For more information, see the type level
 /// [documentation](Input)
 pub fn input() -> String {
-    <Input>::new().get().unwrap()
+    <Input>::new().get()
 }

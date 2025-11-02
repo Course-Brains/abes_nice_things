@@ -91,11 +91,12 @@ mod f0 {
                         file = file_in;
                         if settings.host.is_some() {
                             if settings.path.is_some() {
-                            } else if *"y"
-                                == <Input>::yn()
-                                    .msg("Do you want to use this for subsequent requests?y/n")
-                                    .get()
-                                    .unwrap()
+                            } else if <Input>::yn()
+                                .msg(
+                                    "Do you want to use this for subsequent requests?y/n"
+                                        .to_string(),
+                                )
+                                .get()
                             {
                                 *TO_SEND.try_lock().unwrap() = Some(PathBuf::from(&path))
                             }
@@ -127,22 +128,18 @@ mod f0 {
         stream.read_exact(&mut buf).unwrap();
         let name = String::from_utf8(buf).unwrap();
         if settings.auto_accept {
-        } else if "n"
-            == match stream.peer_addr() {
-                Ok(addr) => <Input>::yn()
-                    .msg(&format!(
-                        "Are you sure you want to accept {name} from {addr}?y/n"
-                    ))
-                    .get()
-                    .unwrap(),
-                Err(_) => <Input>::yn()
-                    .msg(&format!(
-                        "Are you sure you want to accept {name} from unknown?y/n"
-                    ))
-                    .get()
-                    .unwrap(),
-            }
-        {
+        } else if !match stream.peer_addr() {
+            Ok(addr) => <Input>::yn()
+                .msg(format!(
+                    "Are you sure you want to accept {name} from {addr}?y/n"
+                ))
+                .get(),
+            Err(_) => <Input>::yn()
+                .msg(format!(
+                    "Are you sure you want to accept {name} from unknown?y/n"
+                ))
+                .get(),
+        } {
             return;
         }
         let mut buf = Vec::new();
@@ -228,11 +225,9 @@ mod f1 {
             }
         });
         if !settings.auto_accept
-            && "n"
-                == <Input>::yn()
-                    .msg(&format!("Do you want to send {path}?y/n"))
-                    .get()
-                    .unwrap()
+            && !<Input>::yn()
+                .msg(format!("Do you want to send {path}?y/n"))
+                .get()
         {
             return;
         }
@@ -257,11 +252,9 @@ mod f1 {
         let path = String::from_binary(&mut stream).unwrap();
         let len = u64::from_binary(&mut stream).unwrap();
         if !settings.auto_accept {
-            if "n"
-                == <Input>::yn()
-                    .msg(&format!("Do you want to accept {path}?y/n"))
-                    .get()
-                    .unwrap()
+            if !<Input>::yn()
+                .msg(format!("Do you want to accept {path}?y/n"))
+                .get()
             {
                 return;
             }

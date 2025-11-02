@@ -140,20 +140,14 @@ impl Settings {
         match mode {
             Some(mode) => out.mode = mode,
             None => {
-                match <Input>::new()
-                    .cond(&|string| match string.as_str() {
-                        "recv" | "r" | "send" | "s" => Ok(true),
-                        _ => Ok(false),
+                out.mode = <Input>::new()
+                    .msg("Do you want to send or recv?".to_string())
+                    .mapper(|string| match string.as_str() {
+                        "recv" | "r" => Some(Mode::Recv),
+                        "send" | "s" => Some(Mode::Send),
+                        _ => None,
                     })
-                    .msg("Do you want to send or recv?")
                     .get()
-                    .unwrap()
-                    .as_str()
-                {
-                    "recv" | "r" => out.mode = Mode::Recv,
-                    "send" | "s" => out.mode = Mode::Send,
-                    _ => unreachable!(),
-                }
             }
         }
         Some(out)

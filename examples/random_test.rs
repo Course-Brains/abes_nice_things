@@ -3,7 +3,10 @@ use abes_nice_things::{
     random::{initialize, random, raw_random},
     ProgressBar, Style,
 };
-use std::io::{BufRead, Read, Write};
+use std::{
+    any::Any,
+    io::{BufRead, Read, Write},
+};
 use std::{io::Seek, sync::atomic::*};
 const BITS: usize = 4;
 const ITERATIONS: u64 = u32::MAX as u64;
@@ -19,7 +22,7 @@ const PROGRESS_BAR: ProgressBar<u64> = *ProgressBar::new(0, ITERATIONS, 50)
 fn main() {
     initialize();
     //printer();
-    control();
+    //control();
     num_frequency();
     byte_frequency();
     bit_total_frequency();
@@ -343,83 +346,6 @@ fn cycle_counter(initial: u64) -> Option<u64> {
     );
     None
 }
-fn repeat_finder_threaded() {
-    println!("\n\n\nRepeat finder threaded");
-    let mut write = std::fs::File::create("list").unwrap();
-    let (writer, writer_rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || loop {
-        let data: u64 = writer_rx.recv().unwrap();
-        write.write_all(&data.to_ne_bytes()).unwrap();
-    });
-    let mut sections = Vec::new();
-    for i in 0_u64..10_u64 {
-        sections.push(((ITERATIONS / 11) * i)..((ITERATIONS / 11) * (i + 1)));
-    }
-    let mut progress_bar = *PROGRESS_BAR.clone().amount_done(true);
-    progress_bar.draw();
-    let proxy = progress_bar.auto_update(std::time::Duration::from_millis(500));
-    let raw_proxy = unsafe { proxy.raw_proxy() };
-
-    let mut threads: Vec<ThreadAsync<Option<u64>>> = sections
-        .iter()
-        .map(|range| {
-            ThreadAsync::new(repeat_finder_helper(
-                range.start,
-                range.end,
-                raw_proxy.clone(),
-                writer.clone(),
-            ))
-        })
-        .collect();
-
-    loop {
-        let mut done = true;
-        for thread in threads.iter_mut() {
-            if let Some(output) = thread.poll() {
-                done = false;
-                if let Some(duplicate) = output {
-                    panic!("Found duplicate at {duplicate}");
-                }
-            }
-        }
-        if done {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_secs(10));
-    }
-
-    proxy.finish().unwrap().clear();
-}
-fn repeat_finder_helper(
-    start: u64,
-    end: u64,
-    proxy: std::sync::Arc<std::sync::atomic::AtomicU64>,
-    writer: std::sync::mpsc::Sender<u64>,
-) -> std::thread::JoinHandle<Option<u64>> {
-    std::thread::spawn(move || {
-        let mut read = std::io::BufReader::new(std::fs::File::open("list").unwrap());
-        let mut buf = [0_u8; 8];
-        for place in start..end {
-            let random = raw_random(place);
-            read.rewind().unwrap();
-            read.consume(read.buffer().len());
-            loop {
-                if let Err(std::io::ErrorKind::UnexpectedEof) =
-                    read.read_exact(&mut buf).map_err(|x| x.kind())
-                {
-                    break;
-                }
-                let check = u64::from_ne_bytes(buf);
-                if random == check {
-                    return Some(place);
-                }
-            }
-            writer.send(random).unwrap();
-            proxy.fetch_add(1, Ordering::Relaxed);
-        }
-        None
-    })
-}
 enum ThreadAsync<T: Send + 'static> {
     Data(T),
     Handle(std::thread::JoinHandle<T>),
@@ -428,15 +354,24 @@ impl<T: Clone + Send + 'static> ThreadAsync<T> {
     fn new(handle: std::thread::JoinHandle<T>) -> Self {
         Self::Handle(handle)
     }
-    fn update(&mut self) {
+    fn update(&mut self) -> Result<(), Box<dyn Any + Send + 'static>> {
+        if let Self::Handle(handle) = self {
+            if handle.is_finished() {
+                self.join()?;
+            }
+        }
+        Ok(())
+    }
+    fn join(&mut self) -> Result<(), Box<dyn Any + Send + 'static>> {
         if let Self::Handle(handle) = self {
             let mut swap_handle = std::thread::spawn(|| {
                 loop {}
                 todo!()
             });
             std::mem::swap(handle, &mut swap_handle);
-            *self = Self::Data(swap_handle.join().unwrap());
+            *self = Self::Data(swap_handle.join()?);
         }
+        Ok(())
     }
     fn get_if_available(&self) -> Option<&T> {
         match self {
@@ -450,12 +385,20 @@ impl<T: Clone + Send + 'static> ThreadAsync<T> {
             Self::Handle(_) => None,
         }
     }
-    fn poll(&mut self) -> Option<&T> {
-        self.update();
-        self.get_if_available()
+    fn poll(&mut self) -> Result<Option<&T>, Box<dyn Any + Send + 'static>> {
+        self.update()?;
+        Ok(self.get_if_available())
     }
-    fn poll_mut(&mut self) -> Option<&mut T> {
-        self.update();
-        self.get_mut_if_available()
+    fn poll_mut(&mut self) -> Result<Option<&mut T>, Box<dyn Any + Send + 'static>> {
+        self.update()?;
+        Ok(self.get_mut_if_available())
+    }
+    fn get(&mut self) -> Result<&T, Box<dyn Any + Send + 'static>> {
+        self.join()?;
+        Ok(self.get_if_available().unwrap())
+    }
+    fn get_mut(&mut self) -> Result<&mut T, Box<dyn Any + Send + 'static>> {
+        self.join()?;
+        Ok(self.get_mut_if_available().unwrap())
     }
 }
