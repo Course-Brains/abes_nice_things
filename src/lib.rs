@@ -12,6 +12,7 @@ pub use numbers::*;
 pub mod progress_bar;
 pub mod random;
 pub use progress_bar::ProgressBar;
+pub use random::{initialize, random};
 pub mod style;
 pub use style::{Color, Style};
 

@@ -47,7 +47,7 @@
 /// message, if there is one.
 pub struct Input<T = String> {
     msg: Option<String>,
-    mapper: Option<Box<dyn Fn(String) -> Option<T>>>,
+    mapper: Box<dyn Fn(String) -> Option<T>>,
 }
 impl<T> Input<T> {
     /// This actually gets input from the user with the settings you have chosen. If you are trying
@@ -70,11 +70,9 @@ impl<T> Input<T> {
             #[cfg(target_os = "windows")]
             string.pop();
 
-            if let Some(mapper) = &self.mapper {
-                match (mapper)(string) {
-                    Some(out) => break out,
-                    None => continue,
-                }
+            match (self.mapper)(string) {
+                Some(out) => break out,
+                None => continue,
             }
         }
     }
@@ -91,8 +89,8 @@ impl<T> Input<T> {
     /// ```
     /// If you want to know more about why that is a good idea, try running it without it and snoop
     /// around.
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> Input<String> {
+        Input {
             ..Default::default()
         }
     }
@@ -102,40 +100,76 @@ impl<T> Input<T> {
     /// The way you use it is the same as with [new](Input::new) so if you want to know how, go
     /// read that.
     pub fn yn() -> Input<bool> {
-        Input {
-            mapper: Some(Box::new(|input| match input.as_str() {
-                "y" => Some(true),
-                "n" => Some(false),
-                _ => None,
-            })),
-            ..Default::default()
-        }
+        <Input>::new().mapper(|input| match input.as_str() {
+            "y" => Some(true),
+            "n" => Some(false),
+            _ => None,
+        })
     }
-    /// This sets the message used by the input
+    /// This sets the message used by the input. It can take anything that implements [ToString]
+    ///
+    /// The message is printed directly before every attempt to get input from the user. As a
+    /// result, if the mapper causes it to reattempt getting input, it will reprint the message.
+    ///
+    /// Fun fact: [&str] implements [ToString]
     pub fn msg<S: ToString>(mut self, msg: S) -> Self {
         self.msg = Some(msg.to_string());
         self
     }
+    /// This clears the message. If there is no message, then nothing is printed before getting
+    /// input from the user, even an empty newline.
     pub fn clear_msg(mut self) -> Self {
         self.msg = None;
         self
     }
+    /// This defines the mapper. The mapper has two roles.
+    ///
+    /// It needs to determine if the inputted [String] is valid, and if it isn't, then get input
+    /// from the user again.
+    ///
+    /// It also needs to convert from the inputted [String] to whatever type you are trying to get
+    /// from the terminal.
+    ///
+    /// As an example, this is the mapper used by [yn](Input::yn)
+    /// ```
+    /// # use abes_nice_things::Input;
+    /// # fn main() {
+    /// <Input>::new().mapper(|string| {
+    ///     match string.as_str() {
+    ///         "y" => Some(true),
+    ///         "n" => Some(false),
+    ///         _ => None
+    ///     }
+    /// });
+    /// # }
+    /// ```
+    /// Explanation: If the user inputs "y", then it stops getting input and returns [true], if the
+    /// user inputs "n" then it stops getting input and returns [false], and if anything else is
+    /// inputted then it will try again and get more input then run the mapper on that.
+    ///
+    /// Because the mapper can return anything so long as you get it from the inputted string, you
+    /// can even return a [Result] to handle errors! Just remember that if you make the mapper
+    /// return a value instead of [None] then it will stop trying to get input from the user.
     pub fn mapper<O>(self, mapper: impl Fn(String) -> Option<O> + 'static) -> Input<O> {
         Input {
             msg: self.msg,
-            mapper: Some(Box::new(mapper)),
+            mapper: Box::new(mapper),
         }
     }
-    pub fn clear_mapper(mut self) -> Self {
-        self.mapper = None;
-        self
+    /// This removes the mapper. This makes it so that the [Input] will just return whatever the
+    /// user inputs instead of doing any checks or conversions.
+    pub fn clear_mapper(self) -> Input<String> {
+        Input {
+            msg: self.msg,
+            mapper: Box::new(|string| Some(string)),
+        }
     }
 }
-impl<T> Default for Input<T> {
+impl Default for Input<String> {
     fn default() -> Self {
         Self {
             msg: None,
-            mapper: None,
+            mapper: Box::new(|string| Some(string)),
         }
     }
 }
