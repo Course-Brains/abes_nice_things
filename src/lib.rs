@@ -4,7 +4,7 @@
 mod from_binary;
 pub use from_binary::{Binary, FromBinary, ToBinary};
 mod input;
-pub use input::{input, Input};
+pub use input::{Input, input};
 pub mod split;
 pub use split::Split;
 pub mod numbers;
@@ -15,11 +15,13 @@ pub use progress_bar::ProgressBar;
 pub use random::{initialize, random};
 pub mod style;
 pub use style::{Color, Style};
+pub mod max_vec;
+pub use max_vec::*;
 
 pub mod prelude {
     pub use crate::{
-        assert_pattern, assert_pattern_ne, debug, debug_println, input, Binary, FromBinary, Input,
-        Split, ToBinary,
+        Binary, FromBinary, Input, Split, ToBinary, assert_pattern, assert_pattern_ne, debug,
+        debug_println, input,
     };
 }
 
@@ -140,6 +142,46 @@ macro_rules! setter {
     ($($field:ident = $type:ty,)*) => {
         $(setter!($field, $type);)*
     }
+}
+macro_rules! expand {
+    ($($token:tt)*) => {
+        $($token)*
+    }
+}
+#[macro_export]
+macro_rules! require_debug {
+    ($($tokens:tt)*) => {
+        #[cfg(debug_assertions)]
+        expand!($($tokens)*);
+        #[cfg(not(debug_assertions))]
+        compile_error!("Attempted to compile debug only code in release");
+    };
+}
+/// Only keep the given code on windows family targets.
+///
+/// This will keep the given code if the os it is compiled for is considered a part of the "windows
+/// family" by rust as defined in the reference.
+///
+/// You can put any code in this, but it does follow the usual restrictions for macros.
+#[macro_export]
+macro_rules! windows {
+    ($($tokens:tt)*) => {
+        #[cfg(target_family = "windows")]
+        expand!($($tokens:tt)*);
+    };
+}
+/// Only keep the given code on uxit family targets.
+///
+/// If the target this is compiled for is considered a part of the "unix" family by rust, then the
+/// code will be kept.
+///
+///
+#[macro_export]
+macro_rules! unix {
+    ($($tokens:tt)*) => {
+        #[cfg(target_family = "unix")]
+        expand!($($tokens)*);
+    };
 }
 
 /// Encodes 8 [bool]s into a [u8], compressing them to be an eighth the size. I do not recommend doing

@@ -1,6 +1,6 @@
+use crate::Style;
 use crate::numbers::*;
 use crate::setter;
-use crate::Style;
 use std::io::Write;
 use std::sync::Arc;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -11,12 +11,12 @@ pub struct ProgressBar<T: UnsignedInteger> {
     percent_done: bool,
     amount_done: bool,
     done_style: Style,
-    /// [Style] used by the characters in the bar that are not done yet
+    // [Style] used by the characters in the bar that are not done yet
     waiting_style: Style,
     base_style: Style,
     supplementary_newline: bool,
     done_char: char,
-    /// Last done character in the bar
+    // Last done character in the bar
     header_char: char,
     waiting_char: char,
     rate: Option<Rate>,

@@ -67,8 +67,7 @@ impl<T> Input<T> {
             string.pop();
             // removing the other char of newline on windows
             // because on windows it is \n\r
-            #[cfg(target_os = "windows")]
-            string.pop();
+            crate::windows!(string.pop());
 
             match (self.mapper)(string) {
                 Some(out) => break out,

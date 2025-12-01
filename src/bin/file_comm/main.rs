@@ -147,7 +147,24 @@ impl Settings {
                         "send" | "s" => Some(Mode::Send),
                         _ => None,
                     })
-                    .get()
+                    .get();
+                // If we need a path but it is not given, then get it
+                if let Mode::Send = out.mode {
+                    if out.path.is_none() {
+                        out.path = Some(
+                            <Input>::new()
+                                .msg("What file do you want to send?")
+                                .mapper(|path| {
+                                    if std::fs::exists(&path).is_ok_and(|x| x) {
+                                        Some(path)
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .get(),
+                        )
+                    }
+                }
             }
         }
         Some(out)
