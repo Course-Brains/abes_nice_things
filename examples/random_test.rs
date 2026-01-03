@@ -1,7 +1,7 @@
 use abes_nice_things::{
+    ProgressBar, Style,
     progress_bar::Timer,
     random::{initialize, random, raw_random},
-    ProgressBar, Style,
 };
 use std::{
     any::Any,
@@ -21,8 +21,8 @@ const PROGRESS_BAR: ProgressBar<u64> = *ProgressBar::new(0, ITERATIONS, 50)
 
 fn main() {
     initialize();
-    //printer();
-    //control();
+    printer();
+    control();
     num_frequency();
     byte_frequency();
     bit_total_frequency();

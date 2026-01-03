@@ -1,4 +1,36 @@
 use crate::{FromBinary, ToBinary};
+/// A type for changing how the text printed by the terminal looks.
+///
+/// You can change the foreground color, whether or not the foreground uses an intense color,
+/// whether or not the foreground uses a dim color, the background color, whether or not the
+/// background uses an intense color, whether or not the text is bold, whether or not the text is
+/// italic, and whether or not the text is underlined.
+///
+/// Once you have set those to be how you want them, print your [Style] instance before the text
+/// and the visuals will have been changed.
+/// ```
+/// # use abes_nice_things::Style;
+/// # fn main() {
+/// println!("{}I'm red!{}", *Style::new().red(), Style::new());
+/// # }
+/// ```
+/// Although, me personally I just put the reset code in directly because it means my [println] is
+/// less cluttered.
+/// ```
+/// # use abes_nice_things::Style;
+/// # fn main() {
+/// println!("{}I'm also red!\x1b[0m", *Style::new().red());
+/// # }
+/// ```
+/// But that does have the downside of maybe being less readable so it is up to you.
+///
+/// Bit of a warning: Once you change the style, it will not change back to default by itself, you
+/// have to change it. So don't forget to reset the styling with either of the two ways above.
+/// Especially be careful because if your code closes before it resets the styling, then the user
+/// might be confused and not know why their terminal is acting weird.
+///
+/// Also, unless otherwise specified, all methods for this act on the foreground (you know, the
+/// text)
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Style {
     color: Color,
@@ -31,6 +63,10 @@ macro_rules! set {
     };
 }
 impl Style {
+    /// Creates a new [Style] instance which if used will reset the styling.
+    ///
+    /// Although if you are going to use it to reset the styling then I personally like just
+    /// printing "\x1b[0m" because it does the same thing.
     pub const fn new() -> Style {
         Style {
             color: Color::Default,
@@ -43,20 +79,33 @@ impl Style {
             underline: false,
         }
     }
+    /// Sets the foreground color to the given [Color].
+    ///
+    /// This is helpful for more modular code, but if you are going to just set it to a hard coded
+    /// color then I would recommend just using the dedicated function for that color like
+    /// [Style::red].
     pub const fn set_color(&mut self, color: Color) -> &mut Self {
         self.color = color;
         self
     }
+    /// Sets the background color to the given [Color].
+    ///
+    /// If you are just going to give this a hard coded color then I would recommend using one of
+    /// the dedicated functions like [Style::background_red]
     pub const fn set_background(&mut self, color: Color) -> &mut Self {
         self.background = color;
         self
     }
+    /// Returns true if the background has been set.
     pub const fn has_background(&self) -> bool {
         if let Color::Default = self.background {
             return false;
         }
         true
     }
+    /// Swaps the background color and foreground color, as well as whether or not they are
+    /// intense. This does not swap whether or not they are dim though because you cannot have a
+    /// dim background.
     pub const fn swap_grounds(&mut self) -> &mut Self {
         std::mem::swap(&mut self.color, &mut self.background);
         std::mem::swap(&mut self.intense, &mut self.intense_background);
@@ -175,6 +224,12 @@ impl ToBinary for Style {
         self.underline.to_binary(binary)
     }
 }
+/// The colors used for [Style].
+///
+/// Default is special because it will be whatever the default state for your terminal is. If you
+/// have a dark mode terminal, then it will probably be white, and if you have a light mode
+/// terminal, it will probably be black. All you really need to know is that it will be readable
+/// against the default background.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Color {
     Black,

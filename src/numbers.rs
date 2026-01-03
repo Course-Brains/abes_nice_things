@@ -87,8 +87,25 @@ where
         + PrimFrom<f64>
         + 'static,
 {
+    /// The minimum value of this number. This will always be equivalent to the constant of the
+    /// same name for the various number types. If you have the type of your number, you should
+    /// probably use that constant instead.
+    ///
+    /// The use case for this is to be a consistant interface for when you do not know the type of
+    /// the number.
     const MIN: Self;
+    /// The maximum value of this number. This will always be equivalent to the constant of the
+    /// same name for the various number types. If you have the type of your number, you should
+    /// probably use that constant instead.
+    ///
+    /// The use case for this is to be a consistant interface for when you do not know the type of
+    /// the number.
     const MAX: Self;
+    /// The number of bits that this number type takes up. For the integer types, they have a
+    /// constant of the same name, but for floats you should probably just use number literals.
+    ///
+    /// The use case of this is for when you do not know the type of the number, only that it is a
+    /// number.
     const BITS: u32;
 
     /// Works like max except that it assigns the result to self.
@@ -122,6 +139,8 @@ where
 /// so that you can use this as a generic
 /// constraint. If you need more information,
 /// look at [Number]
+///
+/// If you need a more specific constraint, consider [SignedInteger] or [UnsignedInteger]
 pub unsafe trait Integer: Number
 where
     Self: Ord
@@ -173,14 +192,10 @@ where
 pub unsafe trait SignedInteger: Integer
 where
     Self: std::ops::Neg + From<i8>,
-    for<'a> &'a Self: std::ops::Neg
-        + std::ops::BitAnd<Self>
-        + std::ops::BitAnd<&'a Self>
-        + std::ops::BitOr<Self>
-        + std::ops::BitOr<&'a Self>
-        + std::ops::BitXor<Self>
-        + std::ops::BitXor<&'a Self>,
 {
+    /// The unsigned version of this signed integer. So as an example, the unsigned version of
+    /// [i32] is [u32]
+    type Unsigned: UnsignedInteger<Signed = Self>;
 }
 /// This is a trait which is implemented
 /// by all unsigned integers (u8-128) for
@@ -190,6 +205,10 @@ pub unsafe trait UnsignedInteger: Integer
 where
     Self: From<u8>,
 {
+    /// The signed version of this unsigned integer.
+    ///
+    /// The signed version of [usize] is [isize] and so on.
+    type Signed: SignedInteger<Unsigned = Self>;
 }
 /// This is a trait which is implemented
 /// by both floats (f32 and f64) for
@@ -201,9 +220,15 @@ where
     for<'a> &'a Self: std::ops::Neg,
 {
 }
+/// A trait which is implemented by every number that has an atomic variant. (hint, the floats
+/// don't have atomics)
 pub unsafe trait HasAtomic: Integer {
+    /// The atomic version of this integer.
+    /// [usize] -> [AtomicUsize](std::sync::atomic::AtomicUsize) and so on.
     type Atomic: AtomicInteger<Counterpart = Self>;
 }
+/// A trait implemented by all atomic integers. It has some methods for doing atomic operations
+/// which is nice. Might add more later but I am lazy and won't until someone needs them.
 pub unsafe trait AtomicInteger
 where
     Self: Sized
@@ -216,14 +241,49 @@ where
         + Binary
         + 'static,
 {
+    /// The non-atomic version of this atomic integer.
+    /// [AtomicU8](std::sync::atomic::AtomicU8) -> [u8] and so forth.
     type Counterpart: HasAtomic<Atomic = Self>;
+    /// The load operation for this atomic integer, if you do not know what that means, you should
+    /// not be working with atomics and should be reading docs instead.
     fn load(&self, ordering: Ordering) -> Self::Counterpart;
+    /// The store operation for this atomic integer, if you do not know what that means, then read
+    /// the docs on atomics.
     fn store(&self, val: Self::Counterpart, ordering: Ordering);
 }
+/// A trait for primitive type conversions using the [as] keyword. This works nicely for converting
+/// from unknown [Number] types to known numbers.
+/// ```
+/// # use abes_nice_things::{Number, PrimAs};
+/// # fn main() { assert_eq!(example(7_i8), 7_usize); }
+/// fn example(num: impl Number) -> usize {
+///     return num.prim_as()
+/// }
+/// ```
+/// If you want to convert from a known number to an unknown [Number], then try using [PrimFrom]
+///
+/// Fun fact: Every number type can be converted to from any number in the range 0..128
 pub trait PrimAs<T> {
+    /// A primitive type conversion into a known [Number] using the [as] keyword. If you have
+    /// access to the actual number type, then you should probably just use the [as] keyword. But
+    /// if you are dealing with an unknown [Number] then this will let you coerce it into a known
+    /// type.
     fn prim_as(self) -> T;
 }
+/// A trait for primitive type conversions from known number types using the [as] keyword. An
+/// example of a situation where this is useful is when you want to increment an unknown [Number]
+/// by 1.
+/// ```
+/// # use abes_nice_things::{PrimFrom, Number};
+/// # fn main() { let mut num = 3; increment(&mut num); assert_eq!(num, 4); }
+/// fn increment<N: Number>(number: &mut N) {
+///     *number += N::prim_from(1);
+/// }
+/// ```
 pub trait PrimFrom<T> {
+    /// A primitive conversion to an unknown [Number] type from a known number primitive. If you do
+    /// not know what those mean, then you should read more docs and come back, or you should not
+    /// be using this.
     fn prim_from(src: T) -> Self;
 }
 macro_rules! prim_as_helper_helper {
@@ -280,20 +340,16 @@ macro_rules! integer_trait_helper {
         number_trait_helper!($type);
         unsafe impl Integer for $type {}
     };
-}
-macro_rules! signed_integer_trait_helper {
-    ($($type:ty)*) => {
+    ($($signed:ty = $unsigned:ty),*) => {
         $(
-            integer_trait_helper!($type);
-            unsafe impl SignedInteger for $type {}
-        )*
-    }
-}
-macro_rules! unsigned_integer_trait_helper {
-    ($($type:ty)*) => {
-        $(
-            integer_trait_helper!($type);
-            unsafe impl UnsignedInteger for $type {}
+            integer_trait_helper!($signed);
+            integer_trait_helper!($unsigned);
+            unsafe impl SignedInteger for $signed {
+                type Unsigned = $unsigned;
+            }
+            unsafe impl UnsignedInteger for $unsigned {
+                type Signed = $signed;
+            }
         )*
     }
 }
@@ -324,8 +380,14 @@ macro_rules! float_trait_helper {
         )*
     };
 }
-unsigned_integer_trait_helper!(u8 u16 u32 u64 u128 usize);
-signed_integer_trait_helper!(i8 i16 i32 i64 i128 isize);
+integer_trait_helper!(
+    i8 = u8,
+    i16 = u16,
+    i32 = u32,
+    i64 = u64,
+    i128 = u128,
+    isize = usize
+);
 atomic_helper!(
     u8 = AtomicU8,
     u16 = AtomicU16,

@@ -3,6 +3,95 @@ use crate::numbers::*;
 use crate::setter;
 use std::io::Write;
 use std::sync::Arc;
+/// A type for handling progress bar rendering. You give it an initial value, a target, and a
+/// visual length and bip bop bam you have a progress bar.
+///
+/// Of course, it isn't actually that simple, but it mostly is (if you don't customize it much).
+///
+/// # Simplest possible progress bar:
+/// 1. You create a new instance by calling [new](ProgressBar::new)
+///     You will need to give it the starting value of what you are tracking, the end value, and
+///     the visual length (How long the bar is visually)
+/// 2. You call [draw](ProgressBar::draw) to put it on the screen initially.
+/// 3. When you want to update the progress bar, you call [set](ProgressBar::set) to update the
+///    visuals with the new value.
+/// 4. You (optionally) call [clear](ProgressBar::clear) once you are done with it because I think
+///    it looks nice for the progress bar to disappear once it is done.
+/// ```
+/// # use abes_nice_things::ProgressBar;
+/// # fn main() {
+/// let mut progress_bar: ProgressBar<usize> = ProgressBar::new(0, 100, 50); // Step 1
+///                                                          // ^ Initial value
+///                                                             // ^^^ Target/end value
+///                                                                  // ^^ Visual length
+/// progress_bar.draw(); // Step 2
+///
+/// // Step 3
+/// for progress in 0..=100 {
+///     progress_bar.set(progress);
+/// }
+///
+/// progress_bar.clear(); // Step 4
+/// # }
+/// ```
+/// You might see that and think it looks good enough, but it was not enough for me. So onto the
+/// complicated shit!
+///
+/// # Complicated shit
+/// 1. You can set the [done_style](ProgressBar::done_style) which is used for the part that has been
+/// completed.
+/// ```text
+/// [===========>-------]
+///  ^^^^^^^^^^^^ This part
+/// ```
+///
+/// 2. You can set the [waiting_style](ProgressBar::waiting_style) which is used for the part that
+///    is not done yet
+/// ```text
+/// [===========>-------]
+///              ^^^^^^^ This part
+/// ```
+///
+/// 3. You can set the [base_style](ProgressBar::base_style) which is just what gets used for
+///    these guys
+/// ```text
+/// [===========>-------]
+/// ^                   ^
+/// ```
+/// 4. You can change the [done_char](ProgressBar::done_char)
+/// ```text
+/// [===========>-------]
+///  ^^^^^^^^^^^ These
+/// ```
+/// 5. You can change the [header_char](ProgressBar::header_char)
+/// ```text
+/// [===========>-------]
+///             ^ This
+/// ```
+/// 6. You can change the [waiting_char](ProgressBar::waiting_char)
+/// ```text
+/// [===========>-------]
+///              ^^^^^^^ These
+/// ```
+/// 7. You can make it show the [percent_done](ProgressBar::percent_done)
+/// ```text
+/// [===========>-------] // About here
+/// ```
+/// 8. You can make it show the [amound_done](ProgressBar::amount_done)
+/// ```text
+/// [===========>-------] // Also around here
+/// ```
+/// 9. You can make it show the [rate](ProgressBar::rate) which will either be (for now) an
+///    absolute rate, or a rate in bytes + prefixes. In the same place as the last few
+///
+/// 10. You can make it show the [eta](ProgressBar::eta) which does go into days. (in the same
+///     spot)
+///
+/// 11. You can change what time frame is used to calculate the [rate](ProgressBar::rate) and
+///     [eta](ProgressBar::eta) by changing the [timer](ProgressBar::timer)
+///
+/// 12. You know all that stuff that goes after the progress bar? Well you can make it appear on a
+///     newline instead with [supplementary_newline)(ProgressBar::supplementary_newline)
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ProgressBar<T: UnsignedInteger> {
     current: T,
@@ -74,7 +163,13 @@ impl<T: UnsignedInteger> ProgressBar<T> {
         timer = Timer,
     );
     pub fn draw(&mut self) {
-        assert!(self.current <= self.target);
+        assert!(
+            self.current <= self.target,
+            "Attempted to render a progress bar with a current \
+        progress greater than the target ({} vs {})",
+            self.current,
+            self.target
+        );
         let num_done = (self.current * self.visual_len) / self.target;
         print!("\x1b[s");
         print!(
@@ -187,6 +282,24 @@ impl<T: UnsignedInteger> ProgressBar<T> {
             print!("\r\x1b[2K");
         }
     }
+    /// [clear](ProgressBar::clear), [update](ProgressBar::current), and
+    /// [redraw](ProgressBar::draw) the progress bar all in one.
+    ///
+    /// Just like [clear](ProgressBar::clear), it will cause problems if the bar is not on the
+    /// screen when this is called, so call [draw](ProgressBar::draw) before the first time you
+    /// call this.
+    /// ```
+    /// # use abes_nice_things::ProgressBar;
+    /// # fn main() {
+    /// let mut progress_bar: ProgressBar<usize> = ProgressBar::new(0, 100, 50);
+    /// progress_bar.draw();
+    /// for progress in 0..=100 {
+    ///     progress_bar.set(progress);
+    /// }
+    /// // Technically optional, but I think it is nice to have the bar disappear once it finishes
+    /// progress_bar.clear();
+    /// # }
+    /// ```
     pub fn set(&mut self, new_val: T) {
         self.clear();
         self.current = new_val;
@@ -223,6 +336,7 @@ impl<T: UnsignedInteger> ProgressBar<T> {
         Proxy { arc, handle }
     }
 }
+/// The enum used to specify how the rate should be shown for a [ProgressBar]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Rate {
     /// Rate shown as the float calculated for rate with two decimal places.
@@ -248,6 +362,8 @@ impl<T: UnsignedInteger + HasAtomic> Proxy<T> {
         self.arc.clone()
     }
 }
+/// The enum used to specify what range of values to use for calculating the eta and rate for a
+/// [ProgressBar]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Timer {
     /// Uses the value at the most recent draw to calculate the rate of progress and eta

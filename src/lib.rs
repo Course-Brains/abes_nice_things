@@ -15,8 +15,6 @@ pub use progress_bar::ProgressBar;
 pub use random::{initialize, random};
 pub mod style;
 pub use style::{Color, Style};
-pub mod max_vec;
-pub use max_vec::*;
 
 pub mod prelude {
     pub use crate::{
@@ -143,11 +141,25 @@ macro_rules! setter {
         $(setter!($field, $type);)*
     }
 }
+// I don't know why the linter thinks this isn't used, it literally is
+#[allow(unused_macros)]
 macro_rules! expand {
     ($($token:tt)*) => {
         $($token)*
     }
 }
+/// A macro which will pass through whatever tokens you give it on debug, but will fail to compile
+/// on release.
+///
+/// Because this passes any tokens given to it, you can put debugging placeholder values in it and
+/// you will not be able to compile for release until you replace them.
+///
+/// ```
+/// # use abes_nice_things::require_debug;
+/// # fn main() {
+///
+/// # }
+/// ```
 #[macro_export]
 macro_rules! require_debug {
     ($($tokens:tt)*) => {
@@ -182,55 +194,4 @@ macro_rules! unix {
         #[cfg(target_family = "unix")]
         expand!($($tokens)*);
     };
-}
-
-/// Encodes 8 [bool]s into a [u8], compressing them to be an eighth the size. I do not recommend doing
-/// any modifying operations on the resulting [u8] if you want to get the [bool]s back.
-/// ```
-/// # use abes_nice_things::{u8_encode, u8_decode};
-/// # fn main() {
-/// let bools = [true, false, false, false, true, false, true, true];
-/// let compressed = u8_encode(bools);
-/// # println!("{compressed:8b}");
-/// assert_eq!(bools, u8_decode(compressed));
-/// # }
-/// ```
-pub fn u8_encode(data: [bool; 8]) -> u8 {
-    let mut out = 0;
-    for (index, state) in data.iter().enumerate() {
-        if *state {
-            out += 1 << index;
-        }
-    }
-    return out;
-}
-pub fn u8_decode(data: u8) -> [bool; 8] {
-    let mut out = [false; 8];
-    for index in 0..8 {
-        out[index] = (data & (1 << index)) != 0
-    }
-    return out;
-}
-
-pub trait Increment {
-    fn increment(&mut self);
-}
-pub trait Decriment {
-    fn decriment(&mut self);
-}
-impl<T: Integer> Increment for T
-where
-    <T as TryFrom<i32>>::Error: std::fmt::Debug,
-{
-    fn increment(&mut self) {
-        *self += T::try_from(1).unwrap();
-    }
-}
-impl<T: Integer> Decriment for T
-where
-    <T as TryFrom<i32>>::Error: std::fmt::Debug,
-{
-    fn decriment(&mut self) {
-        *self -= T::try_from(1).unwrap()
-    }
 }
