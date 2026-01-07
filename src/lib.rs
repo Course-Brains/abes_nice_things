@@ -16,13 +16,6 @@ pub use random::{initialize, random};
 pub mod style;
 pub use style::{Color, Style};
 
-pub mod prelude {
-    pub use crate::{
-        Binary, FromBinary, Input, Split, ToBinary, assert_pattern, assert_pattern_ne, debug,
-        debug_println, input,
-    };
-}
-
 /// A version of [println] that uses the same
 /// input syntax but only prints when
 /// the crate is not compiled with '--release'
@@ -33,6 +26,7 @@ pub mod prelude {
 ///```
 /// For more information, see [println]
 #[macro_export]
+#[clippy::format_args]
 macro_rules! debug_println {
     () => {
         #[cfg(debug_assertions)]
@@ -118,17 +112,61 @@ macro_rules! assert_pattern_ne {
 ///```
 #[macro_export]
 macro_rules! debug {
-    () => {};
-    ($debug: stmt) => {
+    ($($token:tt)*) => {
         #[cfg(debug_assertions)]
-        $debug;
-    };
-    ($debug: block) => {
-        if cfg!(debug_assertions) {
-            $debug;
-        }
-    };
+        $crate::expand!($($token)*);
+    }
 }
+/// Creates a method which assigns the value of the given field and returns a mutable reference to
+/// Self once done.
+///
+/// This has a use case compared to just setting the field public as it allows for setting the
+/// value using chainable methods, much like [OpenOptions]
+///
+/// It does have to go inside an impl statement for the type you want to create methods for, and
+/// you do need to give it the type of the field.
+/// ```ignore
+/// # use abes_nice_things::setter;
+/// #[derive(Default)]
+/// struct Example {
+///     a: usize,
+///     b: String,
+/// }
+/// impl Example {
+///     setter!(
+///         a = usize,
+///         b = String
+///     );
+/// }
+/// // Is equivalent to
+/// impl Example {
+///     setter!(a, usize);
+///     setter!(b, String);
+/// }
+/// // Is equivalent to
+/// impl Example {
+///     pub const fn a(&mut self, val: usize) -> &mut Self {
+///         self.a = val;
+///         self
+///     }
+///     pub const fn b(&mut self, val: String) -> &mut Self {
+///         self.b = val;
+///         self
+///     }
+/// }
+///
+/// // All three allow
+/// fn main() {
+///     Example::default()
+///         .a(5)
+///         .b("Hello".to_string());
+///
+///     // Which would otherwise require
+///     let mut example = Example::default();
+///     example.a = 5;
+///     example.b = "Hello".to_string();
+/// }
+/// ```
 #[macro_export]
 macro_rules! setter {
     ($field:ident, $type:ty) => {
@@ -141,8 +179,21 @@ macro_rules! setter {
         $(setter!($field, $type);)*
     }
 }
-// I don't know why the linter thinks this isn't used, it literally is
-#[allow(unused_macros)]
+/// A nothing macro which just takes in tokens and spits them back out unmodified. But it is useful
+/// for making macros that will use compile flags as you can ensure that all tokens are affected by
+/// the flag by having the tokens pass through this and using the flag on this aswell.
+///
+/// For example, this is how [debug] works
+/// ```
+/// # use abes_nice_things::expand;
+/// macro_rules! debug {
+///     ($($token:tt)*) => {
+///         #[cfg(debug_assertions)]
+///         $crate::expand!($($token)*);
+///     }
+/// }
+/// ```
+#[macro_export]
 macro_rules! expand {
     ($($token:tt)*) => {
         $($token)*
@@ -157,14 +208,19 @@ macro_rules! expand {
 /// ```
 /// # use abes_nice_things::require_debug;
 /// # fn main() {
-///
+/// let mut value = 5;
+/// require_debug!(
+///     println!("Hello!");
+///     value += 16;
+///     println!("I just modified something!");
+/// );
 /// # }
 /// ```
 #[macro_export]
 macro_rules! require_debug {
     ($($tokens:tt)*) => {
         #[cfg(debug_assertions)]
-        expand!($($tokens)*);
+        $crate::expand!($($tokens)*);
         #[cfg(not(debug_assertions))]
         compile_error!("Attempted to compile debug only code in release");
     };
@@ -179,19 +235,20 @@ macro_rules! require_debug {
 macro_rules! windows {
     ($($tokens:tt)*) => {
         #[cfg(target_family = "windows")]
-        expand!($($tokens:tt)*);
+        $crate::expand!($($tokens:tt)*);
     };
 }
-/// Only keep the given code on uxit family targets.
+/// Only keep the given code on unix family targets.
 ///
-/// If the target this is compiled for is considered a part of the "unix" family by rust, then the
+/// If the target this is compiled for is considered a part of the "unix family" by rust, then the
 /// code will be kept.
 ///
-///
+/// Put whatever you want in this, and if the compiler complains then do what it says it has a
+/// hostage.
 #[macro_export]
 macro_rules! unix {
     ($($tokens:tt)*) => {
         #[cfg(target_family = "unix")]
-        expand!($($tokens)*);
+        $crate::expand!($($tokens)*);
     };
 }

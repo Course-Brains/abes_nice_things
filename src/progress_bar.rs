@@ -162,6 +162,13 @@ impl<T: UnsignedInteger> ProgressBar<T> {
         target = T,
         timer = Timer,
     );
+    /// Draws the visual bar.
+    ///
+    /// If the bar is already on the screen, then weird stuff will happen. For that reason, if you
+    /// are redrawing and updating the visual bar, you should probably use [ProgressBar::set]
+    ///
+    /// However, [ProgressBar::set] assumes the bar is already drawn, so I suggest using this to
+    /// draw the initial bar, then using [ProgressBar::set] to update it.
     pub fn draw(&mut self) {
         assert!(
             self.current <= self.target,
@@ -307,19 +314,20 @@ impl<T: UnsignedInteger> ProgressBar<T> {
     }
     /// Sets up the progress bar to automatically update the visuals and gives back a [Proxy] which
     /// is used to enable that.
-    ///
-    /// # Example:
     /// ```
     /// # use abes_nice_things::ProgressBar;
     /// # fn main() {
     /// let mut progress_bar = ProgressBar::new(0_usize, 100, 50);
     /// progress_bar.draw();
-    /// let proxy = progress_bar.auto_update(std::time::Duration::from_millis(500));
-    ///
-    ///
-    ///
+    /// let mut proxy = progress_bar.auto_update(std::time::Duration::from_millis(500));
+    /// for progress in 0..=100 {
+    ///     proxy.set(progress); // Changes what will be displayed next update
+    /// }
+    /// proxy.finish().unwrap().clear(); // Optionally make the bar disappear once finished
     /// # }
     /// ```
+    /// This does take ownership of the [ProgressBar] to ensure safety, but you can get the
+    /// [ProgressBar] back with [Proxy::finish]
     pub fn auto_update(mut self, interval: std::time::Duration) -> Proxy<T>
     where
         T: HasAtomic,
@@ -344,22 +352,44 @@ pub enum Rate {
     /// Rate shown as bytes with the correct suffixes up to gigabytes per second.
     Bytes,
 }
+/// This is used as a remote interface to a [ProgressBar] that is automatically updating. You
+/// should not be creating this yourself. It can be used in a similar way to the [ProgressBar]
+/// itself, but with reduced functionality. You may not be able to manually clear or draw the bar,
+/// but you can still update the value shown.
+/// ```
+/// # use abes_nice_things::ProgressBar;
+/// # use std::time::Duration;
+/// # fn main() {
+/// let mut progress_bar = ProgressBar::new(0_usize, 100, 50);
+/// let mut proxy = progress_bar.auto_update(Duration::from_secs(1));
+/// for progress in 0..=100 {
+///     proxy.set(progress);
+/// }
+/// // If you want to have the bar disappear once it is done then you have to do that
+/// proxy.finish().unwrap().clear();
+/// # }
+/// ```
 pub struct Proxy<T: UnsignedInteger + HasAtomic> {
     arc: Arc<T::Atomic>,
     handle: std::thread::JoinHandle<ProgressBar<T>>,
 }
 impl<T: UnsignedInteger + HasAtomic> Proxy<T> {
+    /// This changes what value will be displayed by the bar, but will not cause it to visually
+    /// update. The bar will always update its visuals every time interval.
+    ///
+    /// This is roughly equivalent to [ProgressBar::set] and can be used in much the same way. When
+    /// you want to change what value will be displayed, use this.
     pub fn set(&self, current: T) {
         self.arc
             .store(current, std::sync::atomic::Ordering::Relaxed);
     }
+    /// This will stop the thread that updates the visuals and return the original [ProgressBar]
+    /// once it finishes the current visual tick. This is the only way to get the [ProgressBar]
+    /// back after using [ProgressBar::auto_update]
     pub fn finish(self) -> Result<ProgressBar<T>, Box<dyn std::any::Any + Send + 'static>> {
-        // Dropping the arc counts as telling the thread to stop
+        // Dropping the arc tells the thread to stop
         std::mem::drop(self.arc);
         self.handle.join()
-    }
-    pub unsafe fn raw_proxy(&self) -> Arc<T::Atomic> {
-        self.arc.clone()
     }
 }
 /// The enum used to specify what range of values to use for calculating the eta and rate for a

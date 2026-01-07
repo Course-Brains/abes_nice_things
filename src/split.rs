@@ -1,7 +1,7 @@
 use crate::{FromBinary, ToBinary};
-use std::num::NonZeroUsize;
 use std::sync::atomic::AtomicUsize;
-static SPLITS: AtomicUsize = AtomicUsize::new(1);
+
+static SPLITS: AtomicUsize = AtomicUsize::new(0);
 type Halves<T> = (ReadHalf<T>, WriteHalf<T>);
 /// This is a trait designed to [split](Split::split) things that
 /// implement both [Read](std::io::Read) and [Write](std::io::Write)
@@ -24,7 +24,6 @@ type Halves<T> = (ReadHalf<T>, WriteHalf<T>);
 ///
 /// In relation to those, [Split](Split::split) simply creates them. And
 /// [recombine](Split::recombine) consumes both halves to get the original value.
-
 pub trait Split: std::io::Read + std::io::Write
 where
     Self: Sized,
@@ -114,8 +113,7 @@ where
 }
 impl Split for std::net::TcpStream {
     fn split(self) -> Result<(ReadHalf<Self>, WriteHalf<Self>), std::io::Error> {
-        let id =
-            NonZeroUsize::new(SPLITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst)).unwrap();
+        let id = SPLITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok((
             ReadHalf(self.try_clone()?, Some(id)),
             WriteHalf(self, Some(id)),
@@ -126,8 +124,7 @@ impl Split for std::fs::File {
     fn split(self) -> Result<(ReadHalf<Self>, WriteHalf<Self>), std::io::Error> {
         // Intentionally not accounting for Seek because
         // it is not independant from Reading and Writing
-        let id =
-            NonZeroUsize::new(SPLITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst)).unwrap();
+        let id = SPLITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok((
             ReadHalf(self.try_clone()?, Some(id)),
             WriteHalf(self, Some(id)),
@@ -162,7 +159,7 @@ impl Split for std::fs::File {
 /// For more information on how this
 /// is usually created, see [Split]
 #[derive(Debug)]
-pub struct WriteHalf<W: std::io::Write>(W, Option<NonZeroUsize>);
+pub struct WriteHalf<W: std::io::Write>(W, Option<usize>);
 impl<W: std::io::Write> WriteHalf<W> {
     /// This creates an instance of [WriteHalf] containing
     /// the provided [Writer](std::io::Write).
@@ -201,7 +198,7 @@ impl<W: std::io::Write> WriteHalf<W> {
     /// bad idea, unless you are implementing [Split]
     /// for something. In which case, go right ahead
     /// because this is the only way for you to do that.
-    pub const unsafe fn new_id(write: W, id: NonZeroUsize) -> WriteHalf<W> {
+    pub const unsafe fn new_id(write: W, id: usize) -> WriteHalf<W> {
         WriteHalf(write, Some(id))
     }
     /// This gets the [Writer](std::io::Write) stored
@@ -252,7 +249,7 @@ impl<W: std::io::Write> WriteHalf<W> {
     /// instance was made manually through
     /// [new](WriteHalf::new), then this will return
     /// [None] instead of the id.
-    pub const fn get_id(&self) -> Option<NonZeroUsize> {
+    pub const fn get_id(&self) -> Option<usize> {
         self.1
     }
 }
@@ -334,7 +331,7 @@ impl<W: std::io::Write + ToBinary> ToBinary for WriteHalf<W> {
 /// For more information on how this
 /// is usually created, see [Split]
 #[derive(Debug)]
-pub struct ReadHalf<R: std::io::Read>(R, Option<NonZeroUsize>);
+pub struct ReadHalf<R: std::io::Read>(R, Option<usize>);
 impl<R: std::io::Read> ReadHalf<R> {
     /// This creates an instance of [ReadHalf] containing
     /// the provided [Reader](std::io::Read).
@@ -374,7 +371,7 @@ impl<R: std::io::Read> ReadHalf<R> {
     /// bad idea, unless you are implementing [Split]
     /// for something. In which case, go right ahead
     /// because this is the only way for you to do that.
-    pub const unsafe fn new_id(read: R, id: NonZeroUsize) -> ReadHalf<R> {
+    pub const unsafe fn new_id(read: R, id: usize) -> ReadHalf<R> {
         ReadHalf(read, Some(id))
     }
     /// This gets the [Reader](std::io::Read) stored
@@ -426,7 +423,7 @@ impl<R: std::io::Read> ReadHalf<R> {
     /// instance was made manually through
     /// [new](WriteHalf::new), then this will return
     /// [None] instead of the id.
-    pub const fn get_id(&self) -> Option<NonZeroUsize> {
+    pub const fn get_id(&self) -> Option<usize> {
         self.1
     }
 }
