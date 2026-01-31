@@ -1,7 +1,14 @@
+// Look at slides to get topics, find code reading questions about those topics
+
 use crate::{FromBinary, ToBinary};
 use std::sync::atomic::AtomicUsize;
 
 static SPLITS: AtomicUsize = AtomicUsize::new(0);
+/// Gets a unique split id to be used with [ReadHalf] and [WriteHalf] implementations. Unless you
+/// are implementing [Split] for something, you should not be using this.
+pub fn increment_split_count() -> usize {
+    SPLITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+}
 type Halves<T> = (ReadHalf<T>, WriteHalf<T>);
 /// This is a trait designed to [split](Split::split) things that
 /// implement both [Read](std::io::Read) and [Write](std::io::Write)
@@ -44,9 +51,10 @@ where
     /// As opposed to simply cloning the original, which would allow both
     /// to [read](std::io::Read::read) and [write](std::io::Write::write).
     fn split(self) -> Result<Halves<Self>, std::io::Error>;
+
     /// This consumes the two halves of the *same* source and if they were
     /// from the same source, will return the original, otherwise, it will
-    /// return None. For more information on how to
+    /// return the two halves. For more information on how to
     /// create those halves, see [split](Split::split).
     ///
     /// For example:
@@ -63,17 +71,19 @@ where
     /// ```
     /// However, that only works if you are recombining splits from the same
     /// source, if they are different, [recombine](Split::recombine) will
-    /// return [None].
+    /// return the original [ReadHalf] and [WriteHalf].
     /// ```no_run
     /// # use abes_nice_things::Split;
     /// # use std::fs::File;
     /// # fn main() {
     /// let original1 = File::open("~/.vimrc").unwrap();
     /// let original2 = File::open("~/.cargo/bin/rustup").unwrap();
+    ///
     /// let (read1, _) = original1.split().unwrap();
     /// let (_, write2) = original2.split().unwrap();
+    ///
     /// // invalid recombine
-    /// assert!(File::recombine(read1, write2).is_none());
+    /// assert!(File::recombine(read1, write2).is_err());
     /// # }
     /// ```
     /// Due to the read and write halves being from different sources,
@@ -87,10 +97,13 @@ where
     /// # fn main() {
     /// let original1 = File::open("~/.vimrc").unwrap();
     /// let original2 = File::open("~/.cargo/bin/rustup").unwrap();
+    ///
     /// let (read1, write1) = original1.split().unwrap();
     /// let (read2, write2) = original2.split().unwrap();
+    ///
     /// assert!(read1 == write1);
     /// assert!(read2 == write2);
+    ///
     /// assert!(read1 != write2);
     /// assert!(read2 != write1);
     /// # }
@@ -102,18 +115,18 @@ where
     /// [Reader](std::io::Read) or [Writer](std::io::Write) inside while
     /// ignoring the id because there is no situation where an two
     /// [ReadHalf] will have the same id(same for [WriteHalf])
-    fn recombine(read: ReadHalf<Self>, write: WriteHalf<Self>) -> Option<Self> {
+    fn recombine(read: ReadHalf<Self>, write: WriteHalf<Self>) -> Result<Self, Halves<Self>> {
         match read.1 == write.1 {
             // They are from the same source, yay!
-            true => Some(read.0),
+            true => Ok(read.0),
             // They are not from the same source, booooooooo
-            false => None,
+            false => Err((read, write)),
         }
     }
 }
 impl Split for std::net::TcpStream {
     fn split(self) -> Result<(ReadHalf<Self>, WriteHalf<Self>), std::io::Error> {
-        let id = SPLITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let id = increment_split_count();
         Ok((
             ReadHalf(self.try_clone()?, Some(id)),
             WriteHalf(self, Some(id)),
@@ -124,7 +137,7 @@ impl Split for std::fs::File {
     fn split(self) -> Result<(ReadHalf<Self>, WriteHalf<Self>), std::io::Error> {
         // Intentionally not accounting for Seek because
         // it is not independant from Reading and Writing
-        let id = SPLITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let id = increment_split_count();
         Ok((
             ReadHalf(self.try_clone()?, Some(id)),
             WriteHalf(self, Some(id)),
@@ -455,6 +468,23 @@ impl<R: std::io::Read> std::io::Read for ReadHalf<R> {
     }
     fn read_vectored(&mut self, bufs: &mut [std::io::IoSliceMut<'_>]) -> std::io::Result<usize> {
         self.0.read_vectored(bufs)
+    }
+}
+impl<R: std::io::BufRead> std::io::BufRead for ReadHalf<R> {
+    fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+        self.0.fill_buf()
+    }
+    fn consume(&mut self, amount: usize) {
+        self.0.consume(amount)
+    }
+    fn read_line(&mut self, buf: &mut String) -> std::io::Result<usize> {
+        self.0.read_line(buf)
+    }
+    fn read_until(&mut self, byte: u8, buf: &mut Vec<u8>) -> std::io::Result<usize> {
+        self.0.read_until(byte, buf)
+    }
+    fn skip_until(&mut self, byte: u8) -> std::io::Result<usize> {
+        self.0.skip_until(byte)
     }
 }
 impl<R: std::io::Read + FromBinary> FromBinary for ReadHalf<R> {

@@ -1,196 +1,130 @@
-use abes_nice_things::{input, Input};
-use std::net::*;
+use abes_nice_things::Input;
+use std::io::{BufReader, BufWriter};
 mod formats;
-
-static QUIET: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-#[macro_export]
-macro_rules! quiet {
-    () => {
-            if !$crate::QUIET.load(std::sync::atomic::Ordering::Relaxed) {
-                println!()
-            }
-    };
-    ($($args:tt)*) => {
-            if !$crate::QUIET.load(std::sync::atomic::Ordering::Relaxed)  {
-                println!($($args)*)
-            }
-    }
-}
-
 fn main() {
     let settings = Settings::new();
-    if settings.is_none() {
-        return;
-    }
-    let settings = settings.unwrap();
-    match settings.host {
-        Some(port) => host(port, settings),
-        None => connect(settings),
+    match settings.role {
+        Role::Host(port) => host(&settings, port),
+        Role::Client(ref host) => client(&settings, host),
     }
 }
-fn host(port: u16, settings: Settings) {
-    quiet!("Listening...");
-    for connection in TcpListener::bind((Ipv4Addr::UNSPECIFIED, port))
-        .expect("Failed to bind to port")
+fn host(settings: &Settings, port: u16) {
+    let mut is_first = true;
+    for stream in std::net::TcpListener::bind((std::net::Ipv4Addr::UNSPECIFIED, port))
+        .unwrap()
         .incoming()
     {
-        quiet!("Incoming connection");
-        match connection {
-            Ok(stream) => {
-                if let Err(error) = formats::hand_shake(stream, settings.clone()) {
-                    eprintln!("{error}")
-                }
+        if let Ok(mut stream) = stream {
+            if let Ok(format) = formats::host_handshake(settings, &mut stream) {
+                let _ = match settings.mode {
+                    Mode::Send(ref path) => formats::send(
+                        settings,
+                        BufWriter::new(stream),
+                        path.clone(),
+                        format,
+                        is_first,
+                    ),
+                    Mode::Recv => formats::recv(settings, BufReader::new(stream), format),
+                };
+                is_first = false;
             }
-            Err(error) => eprintln!("Failed to connect: {error}"),
         }
     }
 }
-fn connect(settings: Settings) {
-    loop {
-        match settings.clone().mode {
-            Mode::Send => println!("What addr:port do you want to send a file to?"),
-            Mode::Recv => println!("What addr:port do you want to recieve a file from?"),
+fn client(settings: &Settings, host: &String) {
+    let mut stream = std::net::TcpStream::connect(host).unwrap();
+    let format = formats::client_handshake(settings, &mut stream)
+        .expect("Failed to agree on format with host");
+    match settings.mode {
+        Mode::Send(ref path) => {
+            formats::send(settings, BufWriter::new(stream), path.clone(), format, true)
         }
-        let addr = match settings.clone().target {
-            Some(target) => target,
-            None => input(),
-        };
-        match TcpStream::connect(addr) {
-            Ok(stream) => {
-                if let Err(error) = formats::hand_shake(stream, settings.clone()) {
-                    eprintln!("{error}");
-                    continue;
+        Mode::Recv => formats::recv(settings, BufReader::new(stream), format),
+    }
+    .unwrap();
+}
+struct Settings {
+    mode: Mode,
+    role: Role,
+    forbid_lower: Option<u64>,
+    replace_if_needed: bool,
+}
+impl Settings {
+    fn new() -> Settings {
+        let mut mode = None;
+        let mut role = None;
+        let mut forbid_lower = None;
+        let mut replace_if_needed = false;
+
+        let mut args = std::env::args();
+        while let Some(arg) = args.next() {
+            match arg.as_str() {
+                "--send" | "-s" => {
+                    mode = Some(Mode::Send(
+                        args.next().expect("File path needed after --send"),
+                    ))
                 }
-            }
-            Err(error) => {
-                eprintln!("Failed to connect: {error}");
-                continue;
+                "--recv" | "-r" => mode = Some(Mode::Recv),
+                "--host" => {
+                    role = Some(Role::Host(
+                        args.next()
+                            .expect("Port must be placed after --host")
+                            .parse()
+                            .unwrap(),
+                    ))
+                }
+                "--client" => {
+                    role = Some(Role::Client(args.next().expect("Need host after --client")));
+                }
+                "--forbid_lower" => forbid_lower = Some(args.next().unwrap().parse().unwrap()),
+                "--replace-if-needed" => replace_if_needed = true,
+                "help" => println!("{}", include_str!("help.txt")),
+                _ => {}
             }
         }
-        if !settings.repeat {
-            break;
+
+        if let Some(forbid_lower) = forbid_lower
+            && forbid_lower > formats::CURRENT
+        {
+            panic!(
+                "Attempted to forbid all valid formats: attempted to forbid lower than\
+                {forbid_lower} when the highest available format is {}",
+                formats::CURRENT
+            );
+        }
+        if mode.is_none() {
+            let choice = <Input>::allow(vec!["send", "s", "recv", "r"])
+                .msg("Send or recv a file?")
+                .get();
+            match choice.as_str() {
+                "send" | "s" => {
+                    println!("What file?");
+                    mode = Some(Mode::Send(abes_nice_things::input()));
+                }
+                "recv" | "r" => mode = Some(Mode::Recv),
+                _ => unreachable!("Fucko boingo"),
+            }
+        }
+        if role.is_none() {
+            role = Some(Role::Client(
+                <Input>::new().msg("host ip:port to connect to").get(),
+            ));
+        }
+
+        Settings {
+            mode: mode.unwrap(),
+            role: role.unwrap(),
+            forbid_lower,
+            replace_if_needed,
         }
     }
 }
 #[derive(Clone)]
-struct Settings {
-    mode: Mode,
-    host: Option<u16>,
-    overide: Option<formats::FormatID>,
-    // Sender only
-    path: Option<String>,
-    // Client only
-    target: Option<String>,
-    // Reciever only
-    auto_accept: bool,
-    // Whether or not to do the sequence again once it finishes
-    repeat: bool,
-}
-impl Settings {
-    const HELP: &str = include_str!("help.txt");
-    fn new() -> Option<Settings> {
-        let mut out = Settings::default();
-        let mut mode = None;
-        let mut args = std::env::args();
-        while let Some(arg) = args.next() {
-            match arg.as_str() {
-                "help" => {
-                    println!("{}", Settings::HELP);
-                    return None;
-                }
-                "--recv" => mode = Some(Mode::Recv),
-                "--send" => mode = Some(Mode::Send),
-                "--host" => {
-                    out.host = Some(
-                        args.next()
-                            .expect("Need a port after --host")
-                            .parse::<u16>()
-                            .expect("Need a port after --host"),
-                    );
-                }
-                "--override" => {
-                    out.overide = Some(
-                        args.next()
-                            .expect("Need a format id after --override")
-                            .parse::<formats::FormatID>()
-                            .expect("Need for a format id after --override"),
-                    );
-                    assert!(
-                        out.overide.unwrap() > formats::HIGHEST,
-                        "Need a valid format id after --override"
-                    )
-                }
-                "--no-override" => out.overide = None,
-                "--path" => out.path = Some(args.next().expect("Need a file path after --path")),
-                "--no-path" => out.path = None,
-                "--target" => {
-                    out.target = Some(args.next().expect("Need a addr:port after --target"))
-                }
-                "--no-target" => out.target = None,
-                "--quiet" => QUIET.store(true, std::sync::atomic::Ordering::Relaxed),
-                "--normal" => QUIET.store(false, std::sync::atomic::Ordering::Relaxed),
-                "--auto-accept" => out.auto_accept = true,
-                "--no-auto-accept" => out.auto_accept = false,
-                "--repeat" => out.repeat = true,
-                "--no-repeat" => out.repeat = false,
-                _ => {}
-            }
-        }
-        match mode {
-            Some(mode) => out.mode = mode,
-            None => {
-                out.mode = <Input>::new()
-                    .msg("Do you want to send or recv?".to_string())
-                    .mapper(|string| match string.as_str() {
-                        "recv" | "r" => Some(Mode::Recv),
-                        "send" | "s" => Some(Mode::Send),
-                        _ => None,
-                    })
-                    .get();
-                // If we need a path but it is not given, then get it
-                if let Mode::Send = out.mode {
-                    if out.path.is_none() {
-                        out.path = Some(
-                            <Input>::new()
-                                .msg("What file do you want to send?")
-                                .mapper(|path| {
-                                    if std::fs::exists(&path).is_ok_and(|x| x) {
-                                        Some(path)
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .get(),
-                        )
-                    }
-                }
-            }
-        }
-        Some(out)
-    }
-    fn get_format(&self) -> formats::FormatID {
-        match self.overide {
-            Some(format) => format,
-            None => formats::HIGHEST,
-        }
-    }
-}
-impl Default for Settings {
-    fn default() -> Self {
-        Settings {
-            mode: Mode::Recv,
-            host: None,
-            overide: None,
-            path: None,
-            target: None,
-            auto_accept: false,
-            repeat: false,
-        }
-    }
-}
-#[derive(Clone, Copy)]
 enum Mode {
-    Send,
+    Send(String),
     Recv,
+}
+enum Role {
+    Host(u16),
+    Client(String),
 }

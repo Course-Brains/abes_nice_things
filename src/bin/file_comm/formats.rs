@@ -1,267 +1,270 @@
-use crate::{quiet, Mode, Settings};
+use crate::Settings;
 use abes_nice_things::{FromBinary, ToBinary};
+use std::io::{BufReader, BufWriter};
 use std::net::TcpStream;
-
-pub type FormatID = u32;
-pub const HIGHEST: FormatID = 1;
-
-pub fn hand_shake(stream: TcpStream, settings: Settings) -> Result<(), String> {
-    println!("Beginning format handshake");
-    //////////////////////////////////////////////////////////////
-    // The person sending will be the one to suggest the format //
-    //////////////////////////////////////////////////////////////
-    // We are assuming that backwards compatability exists      //
-    //////////////////////////////////////////////////////////////
-    match settings.mode {
-        Mode::Recv => recv_hand_shake(stream, settings),
-        Mode::Send => send_hand_shake(stream, settings),
+pub const CURRENT: u64 = 0;
+// Client suggest format: u64
+// Server counter offer None is refuse: Option<u64>
+// Client accept/deny: bool
+pub fn client_handshake(
+    settings: &Settings,
+    stream: &mut std::net::TcpStream,
+) -> Result<u64, std::io::Error> {
+    CURRENT.to_binary(stream).unwrap();
+    let counter_offer = match <Option<u64>>::from_binary(stream).unwrap() {
+        Some(format) => format,
+        None => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Failed to agree on format",
+            ));
+        }
+    };
+    if let Some(bound) = settings.forbid_lower
+        && counter_offer < bound
+    {
+        false.to_binary(stream).unwrap();
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Failed to agree on format",
+        ))
+    } else {
+        true.to_binary(stream).unwrap();
+        Ok(counter_offer)
     }
 }
-fn send_hand_shake(mut stream: TcpStream, settings: Settings) -> Result<(), String> {
-    quiet!("Sending suggested format: {}", settings.get_format());
-    settings.get_format().to_binary(&mut stream).unwrap();
-    // Format is decided by the reciever
-    let format = Result::<FormatID, String>::from_binary(&mut stream).unwrap()?;
-    quiet!("Decided to use format: {format}\nFormat handshake done");
+pub fn host_handshake(
+    settings: &Settings,
+    stream: &mut std::net::TcpStream,
+) -> Result<u64, std::io::Error> {
+    let offer = u64::from_binary(stream)?;
+    let counter_offer = offer.min(CURRENT);
+    if let Some(bound) = settings.forbid_lower
+        && counter_offer < bound
+    {
+        None
+    } else {
+        Some(counter_offer)
+    }
+    .as_ref()
+    .to_binary(stream)?;
+
+    match bool::from_binary(stream)? {
+        true => Ok(counter_offer),
+        false => Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Failed to agree on format",
+        )),
+    }
+}
+
+pub fn send(
+    settings: &Settings,
+    stream: impl Into<BufWriter<TcpStream>>,
+    path: String,
+    format: u64,
+    is_first: bool,
+) -> std::io::Result<()> {
     match format {
-        0 => f0::send(stream, settings),
-        1 => f1::send(stream, settings),
-        _ => return Err("Invalid format given by other".to_string()),
+        0 => format0::send(settings, stream.into(), path, is_first),
+        x => unreachable!("Invalid format: {x}"),
     }
-    Ok(())
 }
-fn recv_hand_shake(mut stream: TcpStream, settings: Settings) -> Result<(), String> {
-    quiet!("Waiting for suggested format");
-    let other_highest = FormatID::from_binary(&mut stream).unwrap();
-    quiet!("Suggestion: {other_highest}");
-    let format = {
-        // We are able to process their highest format
-        if other_highest <= settings.get_format() {
-            quiet!("Accepting suggestion");
-            other_highest
-        }
-        // We cannot match them, so they have to match us
-        else {
-            quiet!("Suggestion is impossible, sending alternative");
-            settings.get_format()
-        }
-    };
-    Ok::<u32, String>(format).to_binary(&mut stream).unwrap();
-    quiet!("Format handshake done");
+pub fn recv(settings: &Settings, stream: BufReader<TcpStream>, format: u64) -> std::io::Result<()> {
     match format {
-        0 => f0::recv(stream, settings),
-        1 => f1::recv(stream, settings),
-        _ => unreachable!(),
-    };
-    Ok(())
-}
-mod f0 {
-    // Format:
-    // Length of name(u32)
-    // name
-    // data
-    use crate::{quiet, Settings};
-    use abes_nice_things::{input, FromBinary, Input, ToBinary};
-    use std::{
-        fs::File,
-        io::{Read, Write},
-        net::TcpStream,
-        path::PathBuf,
-    };
-
-    static TO_SEND: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
-    pub fn send(mut stream: TcpStream, settings: Settings) {
-        let file;
-        let path = match TO_SEND.try_lock().unwrap().clone() {
-            Some(path) => {
-                file = File::open(&path).unwrap();
-                path
-            }
-            None => loop {
-                let path = match settings.path {
-                    Some(ref path) => path,
-                    None => {
-                        println!("What file do you want to send?");
-                        &input()
-                    }
-                };
-                match File::open(path) {
-                    Ok(file_in) => {
-                        quiet!("Valid file");
-                        file = file_in;
-                        if settings.host.is_some() {
-                            if settings.path.is_some() {
-                            } else if <Input>::yn()
-                                .msg(
-                                    "Do you want to use this for subsequent requests?y/n"
-                                        .to_string(),
-                                )
-                                .get()
-                            {
-                                *TO_SEND.try_lock().unwrap() = Some(PathBuf::from(&path))
-                            }
-                        }
-                        break PathBuf::from(path);
-                    }
-                    Err(error) => eprintln!("Failed to identify file validity: {error}"),
-                }
-            },
-        };
-        let path = path
-            .file_name()
-            .expect("Failed to get file name")
-            .to_str()
-            .unwrap();
-        let len = file.metadata().expect("Failed to get file metadata").len();
-
-        quiet!("Sending metadata");
-        (path.len() as u32).to_binary(&mut stream).unwrap();
-        stream.write_all(path.as_bytes()).unwrap();
-        quiet!("Sending file");
-        transfer(file, stream, len, 1000);
-        quiet!("File sent")
-    }
-    pub fn recv(mut stream: TcpStream, settings: Settings) {
-        quiet!("Getting metadata");
-        let name_len = u32::from_binary(&mut stream).unwrap();
-        let mut buf = vec![0; name_len as usize];
-        stream.read_exact(&mut buf).unwrap();
-        let name = String::from_utf8(buf).unwrap();
-        if settings.auto_accept {
-        } else if !match stream.peer_addr() {
-            Ok(addr) => <Input>::yn()
-                .msg(format!(
-                    "Are you sure you want to accept {name} from {addr}?y/n"
-                ))
-                .get(),
-            Err(_) => <Input>::yn()
-                .msg(format!(
-                    "Are you sure you want to accept {name} from unknown?y/n"
-                ))
-                .get(),
-        } {
-            return;
-        }
-        let mut buf = Vec::new();
-        quiet!("Getting data");
-        stream.read_to_end(&mut buf).unwrap();
-        quiet!("Writing to file");
-        std::fs::write(name, buf).unwrap();
-        quiet!("Done")
-    }
-    pub fn transfer(mut from: impl Read, mut to: impl Write, mut len: u64, interval: usize) {
-        while len > interval as u64 {
-            let mut buf = vec![0_u8; interval];
-            from.read_exact(&mut buf).unwrap();
-            to.write_all(&buf).unwrap();
-            len -= interval as u64;
-        }
-        let mut buf = vec![0; len.try_into().unwrap()];
-        from.read_exact(&mut buf).unwrap();
-        to.write_all(&buf).unwrap();
+        0 => format0::recv(settings, stream),
+        x => unreachable!("Invalid format: {x}"),
     }
 }
-mod f1 {
-    // Format:
-    // 1: Len: u64
-    // 2: len: u32 of name
-    // 3: name: String
-    // 4: data: [u8]
-    use crate::{quiet, Settings, QUIET};
-    use abes_nice_things::{
-        input, progress_bar::Rate, FromBinary, Input, ProgressBar, Style, ToBinary,
-    };
-    use std::io::{Read, Write};
-    use std::net::TcpStream;
-    // Assumed to be less than 2^32
-    const BUFFER_SIZE: u64 = 1000;
-    fn transfer(mut from: impl Read, mut to: impl Write, len: u64) {
-        let progress_bar = match QUIET.load(std::sync::atomic::Ordering::Relaxed) {
-            true => None,
-            false => Some(
-                *ProgressBar::new(0, len, 50)
-                    .done_style(*Style::new().cyan().intense(true))
-                    .waiting_style(*Style::new().red())
-                    .supplementary_newline(true)
-                    .percent_done(true)
-                    .rate(Some(Rate::Bytes))
-                    .eta(true),
-            ),
-        };
-        let proxy = progress_bar.map(|mut bar| {
-            bar.draw();
-            bar.auto_update(std::time::Duration::from_millis(500))
-        });
-        let mut buf = const { [0_u8; BUFFER_SIZE as usize] };
-        let mut remaining = 0;
-        while remaining > BUFFER_SIZE {
-            // First the buffer sized chunks
-            from.read_exact(&mut buf).unwrap();
-            to.write_all(&mut buf).unwrap();
-            remaining -= BUFFER_SIZE;
-            if let Some(proxy) = &proxy {
-                proxy.set(len - remaining);
+mod format0 {
+    use super::*;
+    use abes_nice_things::{FromBinary, MaxVec, ProgressBar, Style, ToBinary};
+    use std::{io::Write, os::unix::fs::PermissionsExt};
+    const BAR: ProgressBar<u64> = *ProgressBar::new(0, 0, 50)
+        .eta(true)
+        .supplementary_newline(true)
+        .amount_done(true)
+        .done_style(*Style::new().green().intense(true));
+    #[repr(transparent)]
+    #[derive(Clone, Copy)]
+    struct Flags(u8);
+    impl Flags {
+        const EXECUTE: u8 = 0b0000_0001;
+        const ZIP: u8 = 0b0000_0010;
+        fn validate(self) -> bool {
+            // If it is a zip, it is not an executable file
+            if self.zip() && self.execute() {
+                return false;
             }
+            true
         }
-        // Then the remainder
-        let mut buf = vec![0_u8; remaining as usize];
-        from.read_exact(&mut buf).unwrap();
-        to.write_all(&mut buf).unwrap();
-        if let Some(proxy) = proxy {
-            proxy.finish().unwrap().clear();
+        fn new() -> Flags {
+            Flags(0b0000_0000)
+        }
+        fn set_execute(&mut self) {
+            self.0 |= Self::EXECUTE
+        }
+        fn set_zip(&mut self) {
+            self.0 |= Self::ZIP
+        }
+        fn execute(self) -> bool {
+            (self.0 & Self::EXECUTE) != 0
+        }
+        fn zip(self) -> bool {
+            (self.0 & Self::ZIP) != 0
         }
     }
-    pub fn send(mut stream: TcpStream, settings: Settings) {
-        let path = settings.path.unwrap_or_else(|| {
-            // Getting a path that exists
-            loop {
-                println!("What file do you want to send?");
-                let path = input();
-                match std::fs::exists(&path) {
-                    Ok(true) => break path,
-                    Ok(false) => println!("That file does not exist"),
-                    Err(error) => eprintln!("Failed to determine if the file exists: {error}"),
+    impl FromBinary for Flags {
+        fn from_binary(binary: &mut dyn std::io::Read) -> Result<Self, std::io::Error>
+        where
+            Self: Sized,
+        {
+            Ok(Flags(u8::from_binary(binary)?))
+        }
+    }
+    impl ToBinary for Flags {
+        fn to_binary(&self, binary: &mut dyn Write) -> Result<(), std::io::Error> {
+            self.0.to_binary(binary)
+        }
+    }
+    // Data:
+    //  1) path: String
+    //  2) data_len: u64
+    //  3) flags: Flags
+    //  4) get bool from recv for if we should go ahead with it
+    //  5) data: &[u8]
+    pub fn send(
+        _settings: &Settings,
+        mut stream: BufWriter<TcpStream>,
+        mut path: String,
+        is_first: bool,
+    ) -> std::io::Result<()> {
+        // Sending metadata
+        path.to_binary(&mut stream)?;
+        let mut flags = Flags::new();
+
+        // Zip handling
+        if std::fs::metadata(&path)?.is_dir() {
+            // zip time!
+            flags.set_zip();
+            if !is_first && std::fs::exists(path.clone() + ".zip")? {
+                // This isn't the first send of the zip and there is a zip which seems like it was
+                // created by us previously
+                if !std::process::Command::new("zip")
+                    .arg(&path)
+                    .spawn()?
+                    .wait()?
+                    .success()
+                {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "Failed to create zip",
+                    ));
                 }
+                path = (path + ".zip").to_string();
             }
-        });
-        if !settings.auto_accept
-            && !<Input>::yn()
-                .msg(format!("Do you want to send {path}?y/n"))
+        }
+        let mut file = std::fs::File::open(path)?;
+        let metadata = file.metadata()?;
+        let len = metadata.len();
+        len.to_binary(&mut stream)?;
+        if !flags.zip() && (metadata.permissions().mode() & 0b001_001_001) != 0 {
+            flags.set_execute();
+        }
+        if !flags.validate() {
+            // If we reached this, it is not a user error, it is a coding error
+            unreachable!("Attempted to send invalid flags: {:b}", flags.0)
+        }
+        flags.to_binary(&mut stream)?;
+        stream.flush()?;
+
+        if !bool::from_binary(stream.get_mut())? {
+            eprintln!("recv decided not to");
+            return Ok(());
+        }
+
+        // Setting up the progress bar
+        #[allow(const_item_mutation)] // Not actually mutating it, it is just warning me that I am
+        // working on a copy, which I know already
+        let bar = (*BAR.target(len)).auto_update(std::time::Duration::from_millis(250));
+
+        // Sending the data
+        let mut sent = 0;
+        let mut buf: MaxVec<u8, 1024> = MaxVec::new();
+        while sent < len {
+            buf.read_from(&mut file)?;
+            stream.write_all(buf.as_slice())?;
+            sent += buf.len() as u64;
+            buf.empty_iffy();
+            bar.set(sent);
+        }
+        bar.finish().unwrap().clear();
+        stream.flush()
+    }
+    pub fn recv(settings: &Settings, mut stream: BufReader<TcpStream>) -> std::io::Result<()> {
+        // Getting metadata
+        let path = String::from_binary(&mut stream)?;
+        let len = u64::from_binary(&mut stream)?;
+        let flags = Flags::from_binary(&mut stream)?;
+
+        // Creating file
+        if !settings.replace_if_needed
+            && std::fs::exists(&path)?
+            && !<abes_nice_things::Input>::yn()
+                .msg(format!(
+                    "{path} already exists, \
+                    are you sure you want to overwrite it? y/n"
+                ))
                 .get()
         {
-            return;
+            // Decided not to overwrite
+            false.to_binary(stream.get_mut())?;
+            return Ok(());
+        } else {
+            true.to_binary(stream.get_mut())?;
         }
-        quiet!("Getting file at path: {path}");
-        let file = std::fs::File::open(&path).unwrap();
-        // Sending over the length of the file to be sent (1)
-        let len = file.metadata().unwrap().len();
-        // Sending the path
-        let binding = std::path::PathBuf::from(path);
-        let path = binding.file_name().unwrap().to_str().unwrap();
-        path.to_binary(&mut stream).unwrap();
-        quiet!("File is length: {len}");
-        len.to_binary(&mut stream).unwrap();
+        let mut file = std::fs::File::create(&path)?;
+        if flags.execute()
+            && !std::process::Command::new("chmod")
+                .arg("+x")
+                .arg(&path)
+                .status()?
+                .success()
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Failed to change file permissions",
+            ));
+        }
 
-        // Sending over the data
-        quiet!("Sending data\n");
-        transfer(file, stream, len);
-        quiet!("Data sent");
-    }
-    pub fn recv(mut stream: TcpStream, settings: Settings) {
-        // Getting metadata
-        let path = String::from_binary(&mut stream).unwrap();
-        let len = u64::from_binary(&mut stream).unwrap();
-        if !settings.auto_accept {
-            if !<Input>::yn()
-                .msg(format!("Do you want to accept {path}?y/n"))
-                .get()
-            {
-                return;
-            }
+        // Recieving data
+        let mut buf: MaxVec<u8, 1024> = MaxVec::new();
+        let mut recieved = 0;
+        #[allow(const_item_mutation)] // see above
+        let bar = (*BAR.target(len)).auto_update(std::time::Duration::from_millis(250));
+        while recieved < len {
+            buf.read_from(&mut stream)?;
+            file.write_all(buf.as_slice())?;
+            recieved += buf.len() as u64;
+            buf.empty_iffy();
+            bar.set(recieved);
         }
-        quiet!("Recieving {path}");
-        let file = std::fs::File::create(path).unwrap();
-        transfer(stream, file, len);
-        quiet!("Recieved");
+
+        bar.finish().unwrap().clear();
+
+        if flags.zip()
+            && !std::process::Command::new("unzip")
+                .arg(path)
+                .spawn()?
+                .wait()?
+                .success()
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Failed to unzip directory",
+            ));
+        }
+
+        Ok(())
     }
 }

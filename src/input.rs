@@ -105,6 +105,23 @@ impl<T> Input<T> {
             _ => None,
         })
     }
+    /// Creates an [Input] instance which will allow through any [String] which is in the given
+    /// list unmodified and deny everything else.
+    ///
+    /// It is equivalent to assigning a mapper of:
+    /// ```ignore
+    /// |string| allow_list.contains(&string).then_some(string)
+    /// ```
+    pub fn allow<S: ToString>(allow_list: Vec<S>) -> Input {
+        let allow_list = allow_list
+            .iter()
+            .map(|item| item.to_string())
+            .collect::<Vec<String>>();
+        Input {
+            msg: None,
+            mapper: Box::new(move |string| allow_list.contains(&string).then_some(string)),
+        }
+    }
     /// This sets the message used by the input. It can take anything that implements [ToString]
     ///
     /// The message is printed directly before every attempt to get input from the user. As a

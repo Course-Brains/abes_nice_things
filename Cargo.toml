@@ -21,8 +21,6 @@ path = "src/bin/bash_install/main.rs"
 
 [dependencies]
 
-[dev-dependencies]
-
 [features]
 default = []
 dyn_binary = []
