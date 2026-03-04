@@ -4,7 +4,7 @@ use std::io::{BufReader, BufWriter};
 use std::net::TcpStream;
 pub const CURRENT: u64 = 0;
 // Client suggest format: u64
-// Server counter offer None is refuse: Option<u64>
+// Server counter offer, None is refuse: Option<u64>
 // Client accept/deny: bool
 pub fn client_handshake(
     settings: &Settings,

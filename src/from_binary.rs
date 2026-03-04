@@ -425,25 +425,25 @@ num_helper!(usize isize);
 #[cfg(not(feature = "dyn_binary"))]
 impl FromBinary for usize {
     fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
-        Ok(u32::from_binary(binary)? as usize)
+        Ok(u64::from_binary(binary)? as usize)
     }
 }
 #[cfg(not(feature = "dyn_binary"))]
 impl ToBinary for usize {
     fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
-        (*self as u32).to_binary(binary)
+        (*self as u64).to_binary(binary)
     }
 }
 #[cfg(not(feature = "dyn_binary"))]
 impl FromBinary for isize {
     fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
-        Ok(i32::from_binary(binary)? as isize)
+        Ok(i64::from_binary(binary)? as isize)
     }
 }
 #[cfg(not(feature = "dyn_binary"))]
 impl ToBinary for isize {
     fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
-        (*self as i32).to_binary(binary)
+        (*self as i64).to_binary(binary)
     }
 }
 macro_rules! vec_helper {
@@ -589,11 +589,8 @@ impl<T: ToBinary, S: ToBinary> ToBinary for std::collections::HashSet<T, S> {
 impl<T: ToBinary> ToBinary for std::collections::HashSet<T> {
     vec_helper!();
 }
-impl<
-        K: FromBinary + Eq + std::hash::Hash,
-        V: FromBinary,
-        S: FromBinary + std::hash::BuildHasher,
-    > FromBinary for std::collections::HashMap<K, V, S>
+impl<K: FromBinary + Eq + std::hash::Hash, V: FromBinary, S: FromBinary + std::hash::BuildHasher>
+    FromBinary for std::collections::HashMap<K, V, S>
 {
     // layout:
     // cap: usize/u32

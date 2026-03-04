@@ -101,6 +101,7 @@ where
     /// The use case for this is to be a consistant interface for when you do not know the type of
     /// the number.
     const MAX: Self;
+    const ZERO: Self;
     /// The number of bits that this number type takes up. For the integer types, they have a
     /// constant of the same name, but for floats you should probably just use number literals.
     ///
@@ -311,6 +312,7 @@ macro_rules! number_trait_helper_helper {
     ($type:ty) => {
         const MIN: $type = <$type>::MIN;
         const MAX: $type = <$type>::MAX;
+        const ZERO: $type = 0 as $type;
         fn max_assign(&mut self, other: $type) {
             *self = (*self).max(other);
         }
