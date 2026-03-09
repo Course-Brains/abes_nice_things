@@ -780,6 +780,27 @@ impl<T: Number, const ROW: usize, const COL: usize> Matrix<T, ROW, COL> {
     pub const fn size(&self) -> (usize, usize) {
         (self.inner.len(), self.inner[0].len())
     }
+    pub const fn into_inner(self) -> [[T; COL]; ROW] {
+        self.inner
+    }
+    pub fn get(&self, row: usize, col: usize) -> Option<&T> {
+        self.inner.get(row).map(|x| x.get(col)).flatten()
+    }
+}
+impl<T: Number, const ROW: usize, const COL: usize> std::ops::Index<(usize, usize)>
+    for Matrix<T, ROW, COL>
+{
+    type Output = T;
+    fn index(&self, index: (usize, usize)) -> &Self::Output {
+        &self.inner[index.0][index.1]
+    }
+}
+impl<T: Number, const ROW: usize, const COL: usize> std::ops::IndexMut<(usize, usize)>
+    for Matrix<T, ROW, COL>
+{
+    fn index_mut(&mut self, index: (usize, usize)) -> &mut Self::Output {
+        &mut self.inner[index.0][index.1]
+    }
 }
 // Matrix addition
 impl<T: Number, const ROW: usize, const COL: usize> std::ops::Add for Matrix<T, ROW, COL> {

@@ -27,10 +27,10 @@ fn main() {
     byte_frequency();
     bit_total_frequency();
     bit_frequency();
-    if let Some((duplicate, batch)) = repeat_finder() {
+    /*if let Some((duplicate, batch)) = repeat_finder() {
         println!("Cycle found in batch {batch}, measuring size...");
         println!("Size: {}", cycle_counter(duplicate).unwrap())
-    }
+    }*/
 }
 
 #[allow(dead_code)]

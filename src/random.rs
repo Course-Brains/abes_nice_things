@@ -1,3 +1,4 @@
+use std::hash::Hasher;
 use std::sync::atomic::{AtomicU64, Ordering};
 static INDEX: AtomicU64 = AtomicU64::new(0);
 /// A psudo random number generator.
@@ -24,7 +25,9 @@ static INDEX: AtomicU64 = AtomicU64::new(0);
 pub fn random() -> u64 {
     let random = raw_random(INDEX.load(Ordering::Relaxed));
     INDEX.store(random, Ordering::Relaxed);
-    random
+    let mut hash = std::hash::DefaultHasher::new();
+    hash.write_u64(random);
+    hash.finish()
 }
 /// The actual operation done by [random]. It is not recommended to use this unless you are sure as
 /// [random] uses a global state which will have actions in other threads affect the state, thus
