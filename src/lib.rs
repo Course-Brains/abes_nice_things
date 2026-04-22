@@ -16,6 +16,8 @@ pub use progress_bar::ProgressBar;
 pub use random::{initialize, random};
 pub mod style;
 pub use style::{Color, Style};
+mod log;
+pub use log::{logln, set_log_path};
 
 /// A version of [println] that uses the same
 /// input syntax but only prints when
@@ -254,7 +256,7 @@ macro_rules! unix {
     };
 }
 
-use std::{io::Read, ops::Deref};
+use std::io::Read;
 #[derive(Debug)]
 pub struct MaxVec<T, const CAP: usize> {
     len: usize,
@@ -616,229 +618,6 @@ impl<F: Fn()> Drop for OnDrop<F> {
     }
 }
 
-/// A rc that is either owning or non owning
-#[derive(Clone, Debug)]
-pub enum OptionRc<T> {
-    Owning(std::rc::Rc<T>),
-    Weak(std::rc::Weak<T>),
-}
-impl<T> OptionRc<T> {
-    /// Creates a new owning instance of the data
-    pub fn new(value: T) -> OptionRc<T> {
-        Self::Owning(std::rc::Rc::new(value))
-    }
-    pub fn get(&self) -> Option<std::rc::Rc<T>> {
-        match self {
-            Self::Owning(rc) => Some(rc.clone()),
-            Self::Weak(weak) => weak.upgrade(),
-        }
-    }
-    /// Will always return Ok if it now has an owning reference.
-    /// Will only return Err if it tried and failed to get the owning reference.
-    pub fn upgrade(&mut self) -> Result<(), ()> {
-        match self {
-            Self::Owning(_) => Ok(()),
-            Self::Weak(weak) => match weak.upgrade() {
-                Some(rc) => {
-                    *self = Self::Owning(rc);
-                    Ok(())
-                }
-                None => Err(()),
-            },
-        }
-    }
-    /// Will always have a non-owning reference after returning
-    pub fn downgrade(&mut self) {
-        if let Self::Owning(rc) = self {
-            *self = Self::Weak(std::rc::Rc::downgrade(rc))
-        }
-    }
-    /// Gets a reference without cloning if able.
-    /// This will only work if it is an owning reference
-    pub fn get_cheap(&self) -> Option<&T> {
-        match self {
-            Self::Owning(rc) => Some(rc.deref()),
-            Self::Weak(_) => None,
-        }
-    }
-    pub fn get_rc(&self) -> Option<std::rc::Rc<T>> {
-        match self {
-            Self::Owning(rc) => Some(rc.clone()),
-            Self::Weak(weak) => weak.upgrade(),
-        }
-    }
-    pub fn get_weak(&self) -> std::rc::Weak<T> {
-        match self {
-            Self::Owning(rc) => std::rc::Rc::downgrade(rc),
-            Self::Weak(weak) => weak.clone(),
-        }
-    }
-}
-impl<T> From<std::rc::Rc<T>> for OptionRc<T> {
-    fn from(value: std::rc::Rc<T>) -> Self {
-        OptionRc::Owning(value)
-    }
-}
-impl<T> From<std::rc::Weak<T>> for OptionRc<T> {
-    fn from(value: std::rc::Weak<T>) -> Self {
-        OptionRc::Weak(value)
-    }
-}
-
-/// An arc that is either owning or non owning
-pub enum OptionArc<T> {
-    Owning(std::sync::Arc<T>),
-    Weak(std::sync::Weak<T>),
-}
-impl<T> OptionArc<T> {
-    /// Creates a now owning instance
-    pub fn new(value: T) -> Self {
-        Self::Owning(std::sync::Arc::new(value))
-    }
-    pub fn get(&self) -> Option<std::sync::Arc<T>> {
-        match self {
-            Self::Owning(arc) => Some(arc.clone()),
-            Self::Weak(weak) => weak.upgrade(),
-        }
-    }
-    pub fn upgrade(&mut self) -> Result<(), ()> {
-        match self {
-            Self::Owning(_) => Ok(()),
-            Self::Weak(weak) => match weak.upgrade() {
-                Some(arc) => {
-                    *self = Self::Owning(arc);
-                    Ok(())
-                }
-                None => Err(()),
-            },
-        }
-    }
-    /// Gets a reference without cloning if able.
-    /// This will only work if it is an owning reference.
-    pub fn get_cheap(&self) -> Option<&T> {
-        match self {
-            Self::Owning(arc) => Some(arc.deref()),
-            Self::Weak(_) => None,
-        }
-    }
-}
-impl<T> From<std::sync::Arc<T>> for OptionArc<T> {
-    fn from(value: std::sync::Arc<T>) -> Self {
-        Self::Owning(value)
-    }
-}
-impl<T> From<std::sync::Weak<T>> for OptionArc<T> {
-    fn from(value: std::sync::Weak<T>) -> Self {
-        Self::Weak(value)
-    }
-}
-
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub struct Matrix<T: Number, const ROW: usize, const COL: usize> {
-    // ROW and COL are always > 0
-    inner: [[T; COL]; ROW],
-}
-impl<T: Number, const ROW: usize, const COL: usize> Matrix<T, ROW, COL> {
-    pub const fn new() -> Option<Self> {
-        if ROW == 0 || COL == 0 {
-            None
-        } else {
-            Some(Self {
-                inner: [[T::ZERO; COL]; ROW],
-            })
-        }
-    }
-    pub const fn new_copy(num: T) -> Option<Self> {
-        if ROW == 0 || COL == 0 {
-            None
-        } else {
-            Some(Self {
-                inner: [[num; COL]; ROW],
-            })
-        }
-    }
-    pub fn new_with<F: Fn(usize, usize) -> T>(closure: F) -> Option<Self> {
-        if ROW == 0 || COL == 0 {
-            None
-        } else {
-            let mut out = Self::new().unwrap();
-            for (x, row) in out.inner.iter_mut().enumerate() {
-                for (y, item) in row.iter_mut().enumerate() {
-                    *item = closure(x, y);
-                }
-            }
-            Some(out)
-        }
-    }
-    pub const fn new_from_array(array: [[T; COL]; ROW]) -> Option<Self> {
-        if ROW == 0 || COL == 0 {
-            None
-        } else {
-            Some(Self { inner: array })
-        }
-    }
-    pub const fn size(&self) -> (usize, usize) {
-        (self.inner.len(), self.inner[0].len())
-    }
-    pub const fn into_inner(self) -> [[T; COL]; ROW] {
-        self.inner
-    }
-    pub fn get(&self, row: usize, col: usize) -> Option<&T> {
-        self.inner.get(row).map(|x| x.get(col)).flatten()
-    }
-}
-impl<T: Number, const ROW: usize, const COL: usize> std::ops::Index<(usize, usize)>
-    for Matrix<T, ROW, COL>
-{
-    type Output = T;
-    fn index(&self, index: (usize, usize)) -> &Self::Output {
-        &self.inner[index.0][index.1]
-    }
-}
-impl<T: Number, const ROW: usize, const COL: usize> std::ops::IndexMut<(usize, usize)>
-    for Matrix<T, ROW, COL>
-{
-    fn index_mut(&mut self, index: (usize, usize)) -> &mut Self::Output {
-        &mut self.inner[index.0][index.1]
-    }
-}
-// Matrix addition
-impl<T: Number, const ROW: usize, const COL: usize> std::ops::Add for Matrix<T, ROW, COL> {
-    type Output = Matrix<T, ROW, COL>;
-    fn add(self, rhs: Self) -> Self::Output {
-        Self::new_with(|row, col| self.inner[row][col] + rhs.inner[row][col]).unwrap()
-    }
-}
-// Matrix subtraction
-impl<T: Number, const ROW: usize, const COL: usize> std::ops::Sub for Matrix<T, ROW, COL> {
-    type Output = Matrix<T, ROW, COL>;
-    fn sub(self, rhs: Self) -> Self::Output {
-        Self::new_with(|row, col| self.inner[row][col] - rhs.inner[row][col]).unwrap()
-    }
-}
-// Matrix scalar multiplication
-impl<T: Number, const ROW: usize, const COL: usize> std::ops::Mul<T> for Matrix<T, ROW, COL> {
-    type Output = Matrix<T, ROW, COL>;
-    fn mul(self, rhs: T) -> Self::Output {
-        Self::new_with(|row, col| self.inner[row][col] * rhs).unwrap()
-    }
-}
-// Matrix multiplication
-impl<T: Number, const M: usize, const N: usize, const O: usize> std::ops::Mul<Matrix<T, N, O>>
-    for Matrix<T, M, N>
-{
-    type Output = Matrix<T, M, O>;
-    fn mul(self, rhs: Matrix<T, N, O>) -> Self::Output {
-        Self::Output::new_with(|row, col| {
-            let mut sum = T::ZERO;
-            for k in 0..N {
-                sum += self.inner[row][k] * rhs.inner[k][col];
-            }
-            sum
-        })
-        .unwrap()
-    }
-}
 #[cfg(test)]
 mod test {
     use super::*;
@@ -964,41 +743,6 @@ mod test {
             assert_eq!(max_vec.len(), 4);
             max_vec.empty_iffy();
             assert_eq!(max_vec.len(), 0);
-        }
-    }
-    mod matrix {
-        use super::*;
-        #[test]
-        fn add() {
-            let a = Matrix::new_from_array([[1, 2, 3], [4, 5, 6], [7, 8, 9]]).unwrap();
-            let b = Matrix::new_from_array([[10, 20, 30], [40, 50, 60], [70, 80, 90]]).unwrap();
-            let correct =
-                Matrix::new_from_array([[11, 22, 33], [44, 55, 66], [77, 88, 99]]).unwrap();
-            assert_eq!(a + b, correct);
-            assert_eq!(b + a, correct);
-        }
-        #[test]
-        fn sub() {
-            let a = Matrix::new_from_array([[10, 20, 30], [40, 50, 60], [70, 80, 90]]).unwrap();
-            let b = Matrix::new_from_array([[1, 2, 3], [4, 5, 6], [7, 8, 9]]).unwrap();
-            let correct =
-                Matrix::new_from_array([[9, 18, 27], [36, 45, 54], [63, 72, 81]]).unwrap();
-            assert_eq!(a - b, correct);
-        }
-        #[test]
-        fn mul_scalar() {
-            let a = Matrix::new_from_array([[1, 2, 3], [4, 5, 6], [7, 8, 9]]).unwrap();
-            let correct = Matrix::new_from_array([[2, 4, 6], [8, 10, 12], [14, 16, 18]]).unwrap();
-            assert_eq!(a * 2, correct);
-        }
-        #[test]
-        fn mul() {
-            let a = Matrix::new_from_array([[2, 4], [1, 3], [0, 5]]).unwrap();
-            let b = Matrix::new_from_array([[6, 3, 1, 5], [8, 9, 7, 2]]).unwrap();
-            let correct =
-                Matrix::new_from_array([[44, 42, 30, 18], [30, 30, 22, 11], [40, 45, 35, 10]])
-                    .unwrap();
-            assert_eq!(a * b, correct);
         }
     }
 }
