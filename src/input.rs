@@ -147,7 +147,7 @@ impl<T> Input<T> {
     /// from the terminal.
     ///
     /// As an example, this is the mapper used by [yn](Input::yn)
-    /// ```
+    /// ```no_run
     /// # use abes_nice_things::Input;
     /// # fn main() {
     /// <Input>::new().mapper(|string| {

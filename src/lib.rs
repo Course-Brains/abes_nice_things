@@ -11,9 +11,7 @@ pub use split::Split;
 pub mod numbers;
 pub use numbers::*;
 pub mod progress_bar;
-pub mod random;
 pub use progress_bar::ProgressBar;
-pub use random::{initialize, random};
 pub mod style;
 pub use style::{Color, Style};
 mod log;
@@ -31,94 +29,36 @@ pub use log::{logln, set_log_path};
 #[macro_export]
 #[clippy::format_args]
 macro_rules! debug_println {
-    () => {
-        #[cfg(debug_assertions)]
-        println!(())
-    };
     ($($arg:tt)*) => {
         #[cfg(debug_assertions)]
         println!("[DEBUG] {}", format_args!($($arg)*));
     }
 }
-/// A version of [assert] that uses
-/// patterns to determine if it has
-/// passed. Specifically, this takes
-/// in an identifier(variable type thing)
-/// then sees if it matches the pattern
-/// given. If it does, this does nothing.
-/// If it doesn't, then it will [panic]
-/// with the message you gave it.
-#[macro_export]
-macro_rules! assert_pattern {
-    ($item: ident, $pattern: pat_param) => {
-        if let $pattern = $item {}
-        else {
-            panic!("Item did not match variant");
-        }
-    };
-    ($item: ident, $pattern: pat_param, $($arg:tt)*) => {
-        if let $pattern = $item {}
-        else {
-            panic!("{}", format_args!($($arg)*));
-        }
-    };
-}
-/// A version of [assert_ne] that
-/// uses pattern matching to determine
-/// whether or not to [panic].
-///
-/// For more information, see [assert_pattern]
-#[macro_export]
-macro_rules! assert_pattern_ne {
-    ($item: ident, $pattern: pat_param) => {
-        if let $pattern = $item {
-            panic!("Item matched variant");
-        }
-    };
-    ($item: ident, $pattern: pat_param, $($arg:tt)*) => {
-        if let $pattern = $item {
-            panic!("{}", format_args!($($arg)*));
-        }
-    };
-}
 /// A macro which will only run code
 /// when the crate is not compiled
 /// with '--release'
 ///
-/// It can be used with a block:
-///```should_panic
+/// Specifically this places whatever tokens given to it in a block which will only be included in
+/// debug. For example,
+///
+/// ```
 /// # use abes_nice_things::debug;
+/// # fn main() {
+/// println!("Works in both release and debug");
+///
+/// debug!(println!("This is debug only"));
+///
 /// debug!({
-///     //Code only ran in debug mode
-/// # panic!("Yay!");
+///     println!("This is also debug only");
 /// });
-///```
-/// Or it can be used with an expression:
-///```should_panic
-/// # use abes_nice_things::debug;
-/// debug!(/*expression*/);
-/// # debug!(panic!("I AM HAVING A PANIC ATTACK"));
-///```
-/// For example:
-///```
-/// # use abes_nice_things::debug;
-/// debug!({
-///     println!("Yippy!");
-///     // Any additional code you want
-/// });
-///```
-///```
-/// # use abes_nice_things::debug;
-/// debug!(println!("Yippy!"));
-/// //     ^^^^^ can only have one thing
-/// //        (note the lack of parenthesis)
-///```
+/// # }
+/// ```
 #[macro_export]
 macro_rules! debug {
     ($($token:tt)*) => {
         #[cfg(debug_assertions)]
-        $crate::expand!($($token)*);
-    }
+        {$($token)*}
+    };
 }
 /// Creates a method which assigns the value of the given field and returns a mutable reference to
 /// Self once done.
@@ -170,6 +110,7 @@ macro_rules! debug {
 ///     example.b = "Hello".to_string();
 /// }
 /// ```
+// TODO: stop using this and get rid of it
 #[macro_export]
 macro_rules! setter {
     ($field:ident, $type:ty) => {
@@ -182,26 +123,6 @@ macro_rules! setter {
         $(setter!($field, $type);)*
     }
 }
-/// A nothing macro which just takes in tokens and spits them back out unmodified. But it is useful
-/// for making macros that will use compile flags as you can ensure that all tokens are affected by
-/// the flag by having the tokens pass through this and using the flag on this aswell.
-///
-/// For example, this is how [debug] works
-/// ```
-/// # use abes_nice_things::expand;
-/// macro_rules! debug {
-///     ($($token:tt)*) => {
-///         #[cfg(debug_assertions)]
-///         $crate::expand!($($token)*);
-///     }
-/// }
-/// ```
-#[macro_export]
-macro_rules! expand {
-    ($($token:tt)*) => {
-        $($token)*
-    }
-}
 /// A macro which will pass through whatever tokens you give it on debug, but will fail to compile
 /// on release.
 ///
@@ -211,21 +132,23 @@ macro_rules! expand {
 /// ```
 /// # use abes_nice_things::require_debug;
 /// # fn main() {
-/// let mut value = 5;
-/// require_debug!(
-///     println!("Hello!");
-///     value += 16;
-///     println!("I just modified something!");
-/// );
+/// let mut value = require_debug!(7);
+///
+/// println!("{value}");
 /// # }
 /// ```
 #[macro_export]
 macro_rules! require_debug {
     ($($tokens:tt)*) => {
-        #[cfg(debug_assertions)]
-        $crate::expand!($($tokens)*);
         #[cfg(not(debug_assertions))]
-        compile_error!("Attempted to compile debug only code in release");
+        {
+            compile_error!("Attempted to compile debug only code in release");
+            todo!()
+        }
+        #[cfg(debug_assertions)]
+        {
+            $($tokens)*
+        }
     };
 }
 /// Only keep the given code on windows family targets.
@@ -238,7 +161,7 @@ macro_rules! require_debug {
 macro_rules! windows {
     ($($tokens:tt)*) => {
         #[cfg(target_family = "windows")]
-        $crate::expand!($($tokens:tt)*);
+        {$($tokens)*}
     };
 }
 /// Only keep the given code on unix family targets.
@@ -252,7 +175,7 @@ macro_rules! windows {
 macro_rules! unix {
     ($($tokens:tt)*) => {
         #[cfg(target_family = "unix")]
-        $crate::expand!($($tokens)*);
+        {$($tokens)*}
     };
 }
 
