@@ -186,7 +186,7 @@ impl<T: UnsignedInteger> ProgressBar<T> {
             self.done_char
                 .to_string()
                 .as_str()
-                .repeat(<T as PrimAs<usize>>::prim_as(num_done).max(1) - 1),
+                .repeat(std::cmp::Ord::max(<T as PrimAs<usize>>::prim_as(num_done), 1) - 1),
             {
                 if <T as PrimAs<usize>>::prim_as(num_done) == 0 {
                     "".to_string()

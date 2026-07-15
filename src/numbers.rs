@@ -111,14 +111,17 @@ where
     const BITS: u32;
     /// It's 1.
     const ONE: Self;
+    fn min(self, other: Self) -> Self;
+    fn max(self, other: Self) -> Self;
 
     /// Works like max except that it assigns the result to self.
     /// ```no_run
     /// # use abes_nice_things::Number;
+    /// # use std::cmp::Ord;
     /// # fn main() {
     /// # let mut num = 0;
     /// # let other_num = 5;
-    /// num = num.max(other_num);
+    /// num = Ord::max(num, other_num);
     /// // Is equivalent to
     /// num.max_assign(other_num);
     /// # }
@@ -128,10 +131,11 @@ where
     /// Works like min except that it assigns the result to self.
     /// ```no_run
     /// # use abes_nice_things::Number;
+    /// # use std::cmp::Ord;
     /// # fn main() {
     /// # let mut num = 0;
     /// # let other_num = 5;
-    /// num = num.min(other_num);
+    /// num = Ord::min(num, other_num);
     /// // Is equivalent to
     /// num.min_assign(other_num);
     /// # }
@@ -317,6 +321,32 @@ macro_rules! number_trait_helper_helper {
         const MAX: $type = <$type>::MAX;
         const ZERO: $type = 0 as $type;
         const ONE: $type = 1 as $type;
+        fn min(self, other: $type) -> $type {
+            std::cmp::Ord::min(self, other)
+        }
+        fn max(self, other: $type) -> $type {
+            std::cmp::Ord::max(self, other)
+        }
+        fn max_assign(&mut self, other: $type) -> &mut Self {
+            *self = std::cmp::Ord::max(*self, other);
+            self
+        }
+        fn min_assign(&mut self, other: $type) -> &mut Self {
+            *self = std::cmp::Ord::min(*self, other);
+            self
+        }
+    };
+    ($type:ty where) => {
+        const MIN: $type = <$type>::MIN;
+        const MAX: $type = <$type>::MAX;
+        const ZERO: $type = 0 as $type;
+        const ONE: $type = 1 as $type;
+        fn min(self, other: $type) -> $type {
+            self.min(other)
+        }
+        fn max(self, other: $type) -> $type {
+            self.max(other)
+        }
         fn max_assign(&mut self, other: $type) -> &mut Self {
             *self = (*self).max(other);
             self
@@ -337,7 +367,7 @@ macro_rules! number_trait_helper {
     };
     ($type:ty, $bits:literal) => {
         unsafe impl Number for $type {
-            number_trait_helper_helper!($type);
+            number_trait_helper_helper!($type where);
             const BITS: u32 = $bits;
         }
         prim_as_helper!($type);
