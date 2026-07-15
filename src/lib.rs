@@ -137,19 +137,19 @@ macro_rules! setter {
 /// println!("{value}");
 /// # }
 /// ```
+#[cfg(not(debug_assertions))]
 #[macro_export]
 macro_rules! require_debug {
     ($($tokens:tt)*) => {
-        #[cfg(not(debug_assertions))]
-        {
-            compile_error!("Attempted to compile debug only code in release");
-            todo!()
-        }
-        #[cfg(debug_assertions)]
-        {
-            $($tokens)*
-        }
+        compile_error!("Attempted to compile debug only code in release");
     };
+}
+#[cfg(debug_assertions)]
+#[macro_export]
+macro_rules! require_debug {
+    ($($token:tt)*) => {
+        $($token)*
+    }
 }
 /// Only keep the given code on windows family targets.
 ///
