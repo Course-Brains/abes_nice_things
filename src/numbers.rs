@@ -123,7 +123,7 @@ where
     /// num.max_assign(other_num);
     /// # }
     /// ```
-    fn max_assign(&mut self, other: Self);
+    fn max_assign(&mut self, other: Self) -> &mut Self;
 
     /// Works like min except that it assigns the result to self.
     /// ```no_run
@@ -136,7 +136,7 @@ where
     /// num.min_assign(other_num);
     /// # }
     /// ```
-    fn min_assign(&mut self, other: Self);
+    fn min_assign(&mut self, other: Self) -> &mut Self;
 }
 /// This is a trait which is implemented
 /// by all integers (i8-128 and u8-128)
@@ -317,11 +317,13 @@ macro_rules! number_trait_helper_helper {
         const MAX: $type = <$type>::MAX;
         const ZERO: $type = 0 as $type;
         const ONE: $type = 1 as $type;
-        fn max_assign(&mut self, other: $type) {
+        fn max_assign(&mut self, other: $type) -> &mut Self {
             *self = (*self).max(other);
+            self
         }
-        fn min_assign(&mut self, other: $type) {
+        fn min_assign(&mut self, other: $type) -> &mut Self {
             *self = (*self).min(other);
+            self
         }
     };
 }
