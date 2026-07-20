@@ -141,6 +141,9 @@ where
     /// # }
     /// ```
     fn min_assign(&mut self, other: Self) -> &mut Self;
+
+    /// This coresponds to abs_diff for the integer types and abs_sub for the floats.
+    fn abs_diff(self, other: Self) -> Self;
 }
 /// This is a trait which is implemented
 /// by all integers (i8-128 and u8-128)
@@ -316,6 +319,7 @@ macro_rules! prim_as_helper {
     }
 }
 macro_rules! number_trait_helper_helper {
+    // Integers
     ($type:ty) => {
         const MIN: $type = <$type>::MIN;
         const MAX: $type = <$type>::MAX;
@@ -335,7 +339,11 @@ macro_rules! number_trait_helper_helper {
             *self = std::cmp::Ord::min(*self, other);
             self
         }
+        fn abs_diff(self, other: $type) -> $type {
+            self.abs_diff(other) as $type
+        }
     };
+    // Floats
     ($type:ty where) => {
         const MIN: $type = <$type>::MIN;
         const MAX: $type = <$type>::MAX;
@@ -354,6 +362,9 @@ macro_rules! number_trait_helper_helper {
         fn min_assign(&mut self, other: $type) -> &mut Self {
             *self = (*self).min(other);
             self
+        }
+        fn abs_diff(self, other: $type) -> $type {
+            (self - other).abs()
         }
     };
 }
