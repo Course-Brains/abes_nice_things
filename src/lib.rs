@@ -192,6 +192,8 @@ impl<T, const CAP: usize> MaxVec<T, CAP> {
             inner: [const { std::mem::MaybeUninit::zeroed() }; CAP],
         }
     }
+    /// The used length of the MaxVec. This is not the capacity which is the maximum possible
+    /// length.
     pub const fn len(&self) -> usize {
         self.len
     }
@@ -299,6 +301,15 @@ impl<T, const CAP: usize> MaxVec<T, CAP> {
             }
         }
         debug_assert_eq!(self.len, 0);
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    pub fn contains(&self, target: &T) -> bool
+    where
+        T: PartialEq,
+    {
+        self.as_slice().contains(target)
     }
 }
 impl<const CAP: usize> MaxVec<u8, CAP> {
