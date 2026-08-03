@@ -77,7 +77,7 @@ use std::sync::Arc;
 /// ```text
 /// [===========>-------] // About here
 /// ```
-/// 8. You can make it show the [amound_done](ProgressBar::amount_done)
+/// 8. You can make it show the [amount_done](ProgressBar::amount_done)
 /// ```text
 /// [===========>-------] // Also around here
 /// ```
@@ -170,6 +170,11 @@ impl<T: UnsignedInteger> ProgressBar<T> {
     /// However, [ProgressBar::set] assumes the bar is already drawn, so I suggest using this to
     /// draw the initial bar, then using [ProgressBar::set] to update it.
     pub fn draw(&mut self) {
+        self.draw_to(&mut std::io::stdout()).unwrap();
+        std::io::stdout().flush().unwrap();
+    }
+    /// Draws the visual bar into a given writer. Usually you just want draw, go use that.
+    pub fn draw_to(&mut self, buffer: &mut impl Write) -> std::io::Result<()> {
         assert!(
             self.current <= self.target,
             "Attempted to render a progress bar with a current \
@@ -178,8 +183,9 @@ impl<T: UnsignedInteger> ProgressBar<T> {
             self.target
         );
         let num_done = (self.current * self.visual_len) / self.target;
-        print!("\x1b[s");
-        print!(
+        write!(buffer, "\x1b[s")?;
+        write!(
+            buffer,
             "{}[{}{}{}{}{}{}]\x1b[0m",
             self.base_style,
             self.done_style,
@@ -200,20 +206,21 @@ impl<T: UnsignedInteger> ProgressBar<T> {
                 .as_str()
                 .repeat((self.visual_len - num_done).try_into().unwrap()),
             self.base_style
-        );
+        )?;
         if self.supplementary_newline {
-            println!();
+            writeln!(buffer)?;
         }
         if self.amount_done {
-            print!(" {}/{}", self.current, self.target);
+            write!(buffer, " {}/{}", self.current, self.target)?;
         }
         if self.percent_done {
-            print!(
+            write!(
+                buffer,
                 " {:.2}%",
                 (<T as PrimAs<f64>>::prim_as(self.current)
                     / <T as PrimAs<f64>>::prim_as(self.target))
                     * 100.0
-            );
+            )?;
         }
         let now = std::time::SystemTime::now();
         if let Some((prev_time, prev_val)) = self.prev {
@@ -223,7 +230,7 @@ impl<T: UnsignedInteger> ProgressBar<T> {
             if let Some(rate) = self.rate {
                 match rate {
                     Rate::Absolute => {
-                        print!(" {value_per_second:.2}/s");
+                        write!(buffer, " {value_per_second:.2}/s")?;
                     }
                     Rate::Bytes => {
                         let (divisor, prefix) = if value_per_second >= 1000000000.0 {
@@ -238,7 +245,7 @@ impl<T: UnsignedInteger> ProgressBar<T> {
                         } else {
                             (1.0, ' ')
                         };
-                        print!(" {}{prefix}B", value_per_second / divisor);
+                        write!(buffer, " {}{prefix}B", value_per_second / divisor)?;
                     }
                 }
             }
@@ -250,11 +257,14 @@ impl<T: UnsignedInteger> ProgressBar<T> {
                 let hours = seconds / 3600;
                 seconds %= 3600;
                 if days >= 1 {
-                    print!(" eta: {days} days, {hours} hours, {seconds} seconds");
+                    write!(
+                        buffer,
+                        " eta: {days} days, {hours} hours, {seconds} seconds"
+                    )?;
                 } else if hours >= 1 {
-                    print!(" eta {hours} hours, {seconds} seconds");
+                    write!(buffer, " eta {hours} hours, {seconds} seconds")?;
                 } else {
-                    print!(" eta: {seconds} seconds");
+                    write!(buffer, " eta: {seconds} seconds")?;
                 }
             }
         } else if let Timer::Mean = self.timer {
@@ -263,7 +273,7 @@ impl<T: UnsignedInteger> ProgressBar<T> {
         if let Timer::MostRecent = self.timer {
             self.prev = Some((now, self.current));
         }
-        std::io::stdout().flush().unwrap();
+        Ok(())
     }
     /// Clears the previously drawn progress bar so that it can be drawn again. If this is run
     /// before the progress bar is initially drawn, then it will remove text from the
