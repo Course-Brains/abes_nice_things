@@ -552,6 +552,29 @@ impl<F: Fn()> Drop for OnDrop<F> {
     }
 }
 
+/// Compact eight bools into one u8.
+///
+/// The inverse operation of [expand]
+pub fn compact(values: [bool; 8]) -> u8 {
+    let mut out = 0;
+    for (place, value) in values.into_iter().enumerate() {
+        if value {
+            out |= 0b1 << place
+        }
+    }
+    out
+}
+/// Expand one u8 into eight bools.
+///
+/// The inverse operation of [compact]
+pub fn expand(value: u8) -> [bool; 8] {
+    let mut out = [false; 8];
+    for place in 0..8 {
+        out[place] = (value & (0b1 << place)) != 0
+    }
+    out
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -677,6 +700,12 @@ mod test {
             assert_eq!(max_vec.len(), 4);
             max_vec.empty_iffy();
             assert_eq!(max_vec.len(), 0);
+        }
+    }
+    #[test]
+    fn compact_expand_parity() {
+        for test in 0..=u8::MAX {
+            assert_eq!(test, compact(expand(test)))
         }
     }
 }
