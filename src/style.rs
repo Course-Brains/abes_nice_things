@@ -196,7 +196,7 @@ impl std::fmt::Display for Style {
     }
 }
 impl FromBinary for Style {
-    fn from_binary(binary: &mut dyn std::io::Read) -> Result<Self, std::io::Error>
+    fn from_binary(binary: &mut dyn std::io::Read) -> crate::from_binary::Result<Self>
     where
         Self: Sized,
     {
@@ -213,7 +213,7 @@ impl FromBinary for Style {
     }
 }
 impl ToBinary for Style {
-    fn to_binary(&self, binary: &mut dyn std::io::Write) -> Result<(), std::io::Error> {
+    fn to_binary(&self, binary: &mut dyn std::io::Write) -> crate::from_binary::Result<()> {
         self.color.to_binary(binary)?;
         self.intense.to_binary(binary)?;
         self.background.to_binary(binary)?;
@@ -258,7 +258,7 @@ impl Color {
     }
 }
 impl FromBinary for Color {
-    fn from_binary(binary: &mut dyn std::io::Read) -> Result<Self, std::io::Error>
+    fn from_binary(binary: &mut dyn std::io::Read) -> crate::from_binary::Result<Self>
     where
         Self: Sized,
     {
@@ -273,16 +273,16 @@ impl FromBinary for Color {
             7 => Color::White,
             8 => Color::Default,
             _ => {
-                return Err(std::io::Error::new(
+                return crate::from_binary::err(
                     std::io::ErrorKind::InvalidData,
                     "Could not get Color from binary",
-                ));
+                );
             }
         })
     }
 }
 impl ToBinary for Color {
-    fn to_binary(&self, binary: &mut dyn std::io::Write) -> Result<(), std::io::Error> {
+    fn to_binary(&self, binary: &mut dyn std::io::Write) -> crate::from_binary::Result<()> {
         match self {
             Color::Black => 0_u8,
             Color::Red => 1_u8,

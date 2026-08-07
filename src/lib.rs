@@ -373,22 +373,19 @@ impl<T: PartialEq, const CAP: usize> PartialEq for MaxVec<T, CAP> {
 }
 impl<T: Eq, const CAP: usize> Eq for MaxVec<T, CAP> {}
 impl<T: FromBinary, const CAP: usize> FromBinary for MaxVec<T, CAP> {
-    fn from_binary(binary: &mut dyn std::io::Read) -> Result<Self, std::io::Error>
-    where
-        Self: Sized,
-    {
+    fn from_binary(binary: &mut dyn std::io::Read) -> from_binary::Result<Self> {
         match MaxVec::from_vec(<Vec<T>>::from_binary(binary)?) {
             Some(max_vec) => Ok(max_vec),
-            None => Err(std::io::Error::new(
+            None => from_binary::err(
                 std::io::ErrorKind::InvalidData,
                 "Failed to get MaxVec from \
             binary due to illegal size",
-            )),
+            ),
         }
     }
 }
 impl<T: ToBinary, const CAP: usize> ToBinary for MaxVec<T, CAP> {
-    fn to_binary(&self, binary: &mut dyn std::io::Write) -> Result<(), std::io::Error> {
+    fn to_binary(&self, binary: &mut dyn std::io::Write) -> from_binary::Result<()> {
         self.as_slice().to_binary(binary)
     }
 }

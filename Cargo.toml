@@ -11,7 +11,9 @@ name = "run"
 path = "src/bin/run/main.rs"
 
 [dependencies]
+anyhow = { version = "1.0", optional = true }
 
 [features]
 default = []
 dyn_binary = []
+anyhow = ["dep:anyhow"]

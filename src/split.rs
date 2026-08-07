@@ -1,5 +1,3 @@
-// Look at slides to get topics, find code reading questions about those topics
-
 use crate::{FromBinary, ToBinary};
 use std::sync::atomic::AtomicUsize;
 
@@ -300,7 +298,7 @@ impl<W: std::io::Write> std::io::Write for WriteHalf<W> {
     }
 }
 impl<W: std::io::Write + FromBinary> FromBinary for WriteHalf<W> {
-    fn from_binary(binary: &mut dyn std::io::Read) -> Result<Self, std::io::Error>
+    fn from_binary(binary: &mut dyn std::io::Read) -> crate::from_binary::Result<Self>
     where
         Self: Sized,
     {
@@ -311,7 +309,7 @@ impl<W: std::io::Write + FromBinary> FromBinary for WriteHalf<W> {
     }
 }
 impl<W: std::io::Write + ToBinary> ToBinary for WriteHalf<W> {
-    fn to_binary(&self, binary: &mut dyn std::io::Write) -> Result<(), std::io::Error> {
+    fn to_binary(&self, binary: &mut dyn std::io::Write) -> crate::from_binary::Result<()> {
         self.0.to_binary(binary)?;
         self.1.as_ref().to_binary(binary)
     }
@@ -488,10 +486,7 @@ impl<R: std::io::BufRead> std::io::BufRead for ReadHalf<R> {
     }
 }
 impl<R: std::io::Read + FromBinary> FromBinary for ReadHalf<R> {
-    fn from_binary(binary: &mut dyn std::io::Read) -> Result<Self, std::io::Error>
-    where
-        Self: Sized,
-    {
+    fn from_binary(binary: &mut dyn std::io::Read) -> crate::from_binary::Result<Self> {
         Ok(ReadHalf(
             R::from_binary(binary)?,
             Option::from_binary(binary)?,
@@ -499,7 +494,7 @@ impl<R: std::io::Read + FromBinary> FromBinary for ReadHalf<R> {
     }
 }
 impl<R: std::io::Read + ToBinary> ToBinary for ReadHalf<R> {
-    fn to_binary(&self, binary: &mut dyn std::io::Write) -> Result<(), std::io::Error> {
+    fn to_binary(&self, binary: &mut dyn std::io::Write) -> crate::from_binary::Result<()> {
         self.0.to_binary(binary)?;
         self.1.as_ref().to_binary(binary)
     }

@@ -1,5 +1,23 @@
-use std::io::{Error, ErrorKind, Read, Write};
+#[cfg(feature = "anyhow")]
+pub(crate) use anyhow::Result;
+#[cfg(not(feature = "anyhow"))]
+pub(crate) use std::io::Result;
+use std::io::{ErrorKind, Read, Write};
 use std::ops::Deref;
+#[cfg(not(feature = "anyhow"))]
+pub(crate) fn err<T, E: Into<Box<dyn std::error::Error + Send + Sync>>>(
+    kind: ErrorKind,
+    error: E,
+) -> Result<T> {
+    Err(std::io::Error::new(kind, error))
+}
+#[cfg(feature = "anyhow")]
+pub(crate) fn err<T, E: Into<Box<dyn std::error::Error + Send + Sync>>>(
+    kind: ErrorKind,
+    error: E,
+) -> Result<T> {
+    Err(anyhow::Error::new(std::io::Error::new(kind, error)))
+}
 /// This trait is designed to allow for easier conversion from binary
 /// in a defined and consistent way.
 /// It contains a singular method([from_binary](FromBinary::from_binary))
@@ -20,7 +38,7 @@ use std::ops::Deref;
 ///     option: Option<bool>
 /// }
 /// impl FromBinary for Data {
-///     fn from_binary(binary: &mut dyn Read) -> Result<Self, std::io::Error> {
+///     fn from_binary(binary: &mut dyn Read) -> std::io::Result<Self> {
 ///         Ok(Data {
 ///             num: i64::from_binary(binary)?,
 ///             vec: Vec::from_binary(binary)?,
@@ -58,7 +76,7 @@ use std::ops::Deref;
 ///     Variant2
 /// }
 /// impl FromBinary for Example {
-///     fn from_binary(binary: &mut dyn Read) -> Result<Self, std::io::Error> {
+///     fn from_binary(binary: &mut dyn Read) -> std::io::Result<Self> {
 ///         match u8::from_binary(binary)? {
 ///             0 => Ok(Example::Variant1),
 ///             1 => Ok(Example::Variant2),
@@ -100,7 +118,7 @@ use std::ops::Deref;
 ///     }
 /// }
 /// impl<T: FromBinary> FromBinary for Example<T> {
-///     fn from_binary(binary: &mut dyn Read) -> Result<Self, std::io::Error> {
+///     fn from_binary(binary: &mut dyn Read) -> std::io::Result<Self> {
 ///         match u8::from_binary(binary)? {
 ///             0 => Ok(Example::EmptyVariant),
 ///             1 => Ok(Example::TupleVariant(
@@ -128,6 +146,23 @@ use std::ops::Deref;
 /// because we ensure that T must implement
 /// [FromBinary], we can just do them similarly
 /// to the [u8] and [String].
+///
+/// If a type has a generic then the syntax gets a bit weird but not too bad. You just have to put
+/// < > around the type first
+/// ```
+/// # use abes_nice_things::FromBinary;
+/// # use std::io::Read;
+/// struct Thing {
+///     vec: Vec<u8>
+/// }
+/// impl FromBinary for Thing {
+///     fn from_binary(binary: &mut dyn Read) -> std::io::Result<Self> {
+///         Ok(Thing {
+///             vec: <Vec<u8>>::from_binary(binary)?
+///         })
+///     }
+/// }
+/// ```
 pub trait FromBinary {
     /// This method allows for easier converson
     /// from binary while staying safe
@@ -144,7 +179,7 @@ pub trait FromBinary {
     /// #[derive(Debug)]
     /// struct Data(i64, String);
     /// impl FromBinary for Data {
-    ///     fn from_binary(binary: &mut dyn Read) -> Result<Self, std::io::Error> {
+    ///     fn from_binary(binary: &mut dyn Read) -> std::io::Result<Self> {
     ///         Ok(Data(
     ///             i64::from_binary(binary)?,
     ///             String::from_binary(binary)?
@@ -210,7 +245,7 @@ pub trait FromBinary {
     /// no extra code has to be written.
     ///
     /// For more infomation see the [trait docs](FromBinary)
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error>
+    fn from_binary(binary: &mut dyn Read) -> Result<Self>
     where
         Self: Sized;
 }
@@ -232,7 +267,7 @@ pub trait FromBinary {
 ///     field2: u8,
 /// }
 /// impl ToBinary for MyStruct {
-///     fn to_binary(&self, binary: &mut dyn Write) -> Result<(), std::io::Error> {
+///     fn to_binary(&self, binary: &mut dyn Write) -> std::io::Result<()> {
 ///         self.field1.to_binary(binary)?;
 ///         self.field2.to_binary(binary)
 ///     }
@@ -271,7 +306,7 @@ pub trait FromBinary {
 ///     Variant2
 /// }
 /// impl ToBinary for Example {
-///     fn to_binary(&self, binary: &mut dyn Write) -> Result<(), std::io::Error> {
+///     fn to_binary(&self, binary: &mut dyn Write) -> std::io::Result<()> {
 ///         match self {
 ///             Example::Variant1 => 0_u8.to_binary(binary)?,
 ///             Example::Variant2 => 1_u8.to_binary(binary)?
@@ -304,7 +339,7 @@ pub trait FromBinary {
 ///     }
 /// }
 /// impl<T: ToBinary> ToBinary for Example<T> {
-///     fn to_binary(&self, binary: &mut dyn Write) -> Result<(), std::io::Error> {
+///     fn to_binary(&self, binary: &mut dyn Write) -> std::io::Result<()> {
 ///         match self {
 ///             Example::EmptyVariant => 0_u8.to_binary(binary),
 ///             Example::TupleVariant (field1, field2) => {
@@ -331,6 +366,19 @@ pub trait FromBinary {
 /// variants to be consistently ordered between the
 /// [to](ToBinary::to_binary) operation and the
 /// [from](FromBinary::from_binary) operation.
+///
+/// Important thing to note is that due to implementation conflicts, I was force to implement it in
+/// a weird way for a couple generic types. The one you will run into the most is [Option] for
+/// which [ToBinary] is not implemented for Option<T> but is for Option<&T> but it isn't too bad
+/// since you can just use .as_ref()
+/// ```ignore
+/// Some(5_usize).as_ref().to_binary(&mut file).unwrap();
+/// ```
+///
+/// This also causes issues with tuples. On their own these don't cause many problems but it is
+/// annoying when you have something like a Vec<Option<usize>> because now the [Vec] doesn't
+/// implement ToBinary and you have to either convert it to a Vec<Option<&usize>> or implement it
+/// yourself.
 pub trait ToBinary {
     /// This method allows for easier conversion
     /// to binary cheaply and simply.
@@ -376,7 +424,7 @@ pub trait ToBinary {
     /// [Write] is a valid binary for this method.
     /// For more information/implementation instructions,
     /// look at [trait level docs](ToBinary)
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error>;
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()>;
 }
 /// A convinience trait which is implemented for
 /// everything that implements both [FromBinary]
@@ -392,12 +440,12 @@ pub trait ToBinary {
 pub trait Binary: FromBinary + ToBinary {}
 impl<T: FromBinary + ToBinary> Binary for T {}
 impl<T: ToBinary> ToBinary for &T {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         T::to_binary(self, binary)
     }
 }
 impl<T: ToBinary> ToBinary for &mut T {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         T::to_binary(self, binary)
     }
 }
@@ -405,15 +453,15 @@ macro_rules! num_helper {
     ($($type: ty)*) => {
         $(
             impl FromBinary for $type {
-                fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+                fn from_binary(binary: &mut dyn Read) -> Result<Self> {
                     let mut chunk: [u8; std::mem::size_of::<Self>()] = [0; std::mem::size_of::<Self>()];
                     binary.read_exact(&mut chunk)?;
                     Ok(<$type>::from_le_bytes(chunk))
                 }
             }
             impl ToBinary for $type {
-                fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
-                    binary.write_all(&self.to_le_bytes())
+                fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
+                    Ok(binary.write_all(&self.to_le_bytes())?)
                 }
             }
         )*
@@ -424,31 +472,31 @@ num_helper!(u8 u16 u32 u64 u128 i8 i16 i32 i64 i128 f32 f64);
 num_helper!(usize isize);
 #[cfg(not(feature = "dyn_binary"))]
 impl FromBinary for usize {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(u64::from_binary(binary)? as usize)
     }
 }
 #[cfg(not(feature = "dyn_binary"))]
 impl ToBinary for usize {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         (*self as u64).to_binary(binary)
     }
 }
 #[cfg(not(feature = "dyn_binary"))]
 impl FromBinary for isize {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(i64::from_binary(binary)? as isize)
     }
 }
 #[cfg(not(feature = "dyn_binary"))]
 impl ToBinary for isize {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         (*self as i64).to_binary(binary)
     }
 }
 macro_rules! vec_helper {
     () => {
-        fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+        fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
             self.len().to_binary(binary)?;
             for item in self.iter() {
                 item.to_binary(binary)?
@@ -458,70 +506,61 @@ macro_rules! vec_helper {
     };
 }
 impl FromBinary for std::primitive::char {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         match char::from_u32(u32::from_binary(binary)?) {
             Some(character) => Ok(character),
-            None => Err(Error::new(
-                ErrorKind::InvalidData,
-                "Could not get char from u8",
-            )),
+            None => err(ErrorKind::InvalidData, "Could not get char from u8"),
         }
     }
 }
 impl ToBinary for std::primitive::char {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         (*self as u32).to_binary(binary)
     }
 }
 impl FromBinary for bool {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         let mut buf: [u8; 1] = [0];
         binary.read_exact(&mut buf)?;
         match buf[0] {
             0b0000_0000 => Ok(false),
             0b0000_0001 => Ok(true),
-            _ => Err(Error::new(
-                ErrorKind::InvalidData,
-                "Could not get bool from u8",
-            )),
+            _ => err(ErrorKind::InvalidData, "Could not get bool from u8"),
         }
     }
 }
 impl ToBinary for bool {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
-        match self {
-            true => binary.write_all(&[0b0000_0001]),
-            false => binary.write_all(&[0b0000_0000]),
-        }
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
+        Ok(match self {
+            true => binary.write_all(&[0b0000_0001])?,
+            false => binary.write_all(&[0b0000_0000])?,
+        })
     }
 }
 impl FromBinary for String {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         let len = usize::from_binary(binary)?;
         let mut buf = vec![0; len];
         binary.read_exact(&mut buf)?;
         match String::from_utf8(buf) {
             Ok(string) => Ok(string),
-            Err(_) => Err(Error::new(
-                ErrorKind::InvalidData,
-                "Could not get String from [u8]",
-            )),
+            Err(_) => err(ErrorKind::InvalidData, "Could not get String from [u8]"),
         }
     }
 }
 impl ToBinary for String {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.len().to_binary(binary)?;
-        binary.write_all(self.as_bytes())
+        Ok(binary.write_all(self.as_bytes())?)
     }
 }
 impl ToBinary for &str {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.to_string().to_binary(binary)
     }
 }
 impl<T: FromBinary> FromBinary for Vec<T> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         let len = usize::from_binary(binary)?;
         let mut out = Vec::with_capacity(len);
         for _ in 0..len {
@@ -534,7 +573,7 @@ impl<T: ToBinary> ToBinary for Vec<T> {
     vec_helper!();
 }
 impl<T: FromBinary> FromBinary for std::collections::VecDeque<T> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(Vec::from_binary(binary)?.into())
     }
 }
@@ -544,7 +583,7 @@ impl<T: ToBinary> ToBinary for std::collections::VecDeque<T> {
     vec_helper!();
 }
 impl<T: FromBinary> FromBinary for std::collections::LinkedList<T> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(Vec::from_binary(binary)?.into_iter().collect())
     }
 }
@@ -557,7 +596,7 @@ impl<T: ToBinary> ToBinary for std::collections::LinkedList<T> {
 impl<T: FromBinary + std::hash::Hash + Eq, S: FromBinary + std::hash::BuildHasher> FromBinary
     for std::collections::HashSet<T, S>
 {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         // Can't just use the Vec implementation for this
         // Format:
         // capacity: usize/u32
@@ -572,12 +611,12 @@ impl<T: FromBinary + std::hash::Hash + Eq, S: FromBinary + std::hash::BuildHashe
     }
 }
 impl<T: FromBinary + std::hash::Hash + Eq> FromBinary for std::collections::HashSet<T> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(Vec::from_binary(binary)?.into_iter().collect())
     }
 }
 impl<T: ToBinary, S: ToBinary> ToBinary for std::collections::HashSet<T, S> {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.len().to_binary(binary)?;
         self.hasher().to_binary(binary)?;
         for item in self.iter() {
@@ -593,10 +632,10 @@ impl<K: FromBinary + Eq + std::hash::Hash, V: FromBinary, S: FromBinary + std::h
     FromBinary for std::collections::HashMap<K, V, S>
 {
     // layout:
-    // cap: usize/u32
+    // cap: usize/u64
     // hasher: S
     // data: [(K, V)]
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         let cap = usize::from_binary(binary)?;
         let mut out = Self::with_capacity_and_hasher(cap, S::from_binary(binary)?);
         for _ in 0..cap {
@@ -608,12 +647,12 @@ impl<K: FromBinary + Eq + std::hash::Hash, V: FromBinary, S: FromBinary + std::h
 impl<K: FromBinary + std::hash::Hash + Eq, V: FromBinary> FromBinary
     for std::collections::HashMap<K, V>
 {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(Vec::from_binary(binary)?.into_iter().collect())
     }
 }
 impl<K: ToBinary, V: ToBinary, S: ToBinary> ToBinary for std::collections::HashMap<K, V, S> {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.len().to_binary(binary)?;
         self.hasher().to_binary(binary)?;
         for (key, val) in self.iter() {
@@ -627,12 +666,12 @@ impl<K: ToBinary, V: ToBinary> ToBinary for std::collections::HashMap<K, V> {
     vec_helper!();
 }
 impl<T: FromBinary + Ord> FromBinary for std::collections::BinaryHeap<T> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(Vec::from_binary(binary)?.into())
     }
 }
 impl<T: ToBinary> ToBinary for std::collections::BinaryHeap<T> {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.as_slice().to_binary(binary)?;
         Ok(())
     }
@@ -641,7 +680,7 @@ impl<T: ToBinary> ToBinary for &[T] {
     vec_helper!();
 }
 impl<T: FromBinary + Ord> FromBinary for std::collections::BTreeSet<T> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(Vec::from_binary(binary)?.into_iter().collect())
     }
 }
@@ -649,7 +688,7 @@ impl<T: ToBinary> ToBinary for std::collections::BTreeSet<T> {
     vec_helper!();
 }
 impl<K: FromBinary + Ord, V: FromBinary> FromBinary for std::collections::BTreeMap<K, V> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(Vec::from_binary(binary)?.into_iter().collect())
     }
 }
@@ -657,25 +696,21 @@ impl<K: ToBinary, V: ToBinary> ToBinary for std::collections::BTreeMap<K, V> {
     vec_helper!();
 }
 impl FromBinary for std::alloc::Layout {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         match Self::from_size_align(usize::from_binary(binary)?, usize::from_binary(binary)?) {
             Ok(layout) => Ok(layout),
-            Err(_) => Err(Error::new(
-                ErrorKind::InvalidData,
-                "Could not get Layout from binary",
-            )),
+            Err(_) => err(ErrorKind::InvalidData, "Could not get Layout from binary"),
         }
     }
 }
 impl ToBinary for std::alloc::Layout {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.size().to_binary(binary)?;
-        self.align().to_binary(binary)?;
-        Ok(())
+        self.align().to_binary(binary)
     }
 }
 impl<T: FromBinary> FromBinary for Option<T> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         match bool::from_binary(binary)? {
             true => {
                 // Some(T)
@@ -689,7 +724,7 @@ impl<T: FromBinary> FromBinary for Option<T> {
     }
 }
 impl<T: ToBinary> ToBinary for Option<&T> {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         match self {
             Some(value) => {
                 true.to_binary(binary)?;
@@ -700,57 +735,53 @@ impl<T: ToBinary> ToBinary for Option<&T> {
         Ok(())
     }
 }
-impl<T: FromBinary, E: FromBinary> FromBinary for Result<T, E> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+impl<T: FromBinary, E: FromBinary> FromBinary for std::result::Result<T, E> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         match u8::from_binary(binary)? {
             0 => Ok(Ok(T::from_binary(binary)?)),
             1 => Ok(Err(E::from_binary(binary)?)),
-            _ => Err(Error::new(
-                ErrorKind::InvalidData,
-                "Failed to get Result from binary",
-            )),
+            _ => err(ErrorKind::InvalidData, "Failed to get Result from binary"),
         }
     }
 }
-impl<T: ToBinary, E: ToBinary> ToBinary for Result<T, E> {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+impl<T: ToBinary, E: ToBinary> ToBinary for std::result::Result<T, E> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         match self {
             Ok(value) => {
                 0_u8.to_binary(binary)?;
-                value.to_binary(binary)?;
+                value.to_binary(binary)
             }
             Err(error) => {
                 1_u8.to_binary(binary)?;
-                error.to_binary(binary)?;
+                error.to_binary(binary)
             }
         }
-        Ok(())
     }
 }
 impl FromBinary for () {
-    fn from_binary(_binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(_binary: &mut dyn Read) -> Result<Self> {
         Ok(())
     }
 }
 impl ToBinary for () {
-    fn to_binary(&self, _binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, _binary: &mut dyn Write) -> Result<()> {
         Ok(())
     }
 }
 impl<T: FromBinary, U: FromBinary> FromBinary for (T, U) {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok((T::from_binary(binary)?, U::from_binary(binary)?))
     }
 }
 impl<T: ToBinary, U: ToBinary> ToBinary for (&T, &U) {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.0.to_binary(binary)?;
         self.1.to_binary(binary)?;
         Ok(())
     }
 }
 impl<T: FromBinary, U: FromBinary, I: FromBinary> FromBinary for (T, U, I) {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok((
             T::from_binary(binary)?,
             U::from_binary(binary)?,
@@ -759,7 +790,7 @@ impl<T: FromBinary, U: FromBinary, I: FromBinary> FromBinary for (T, U, I) {
     }
 }
 impl<T: ToBinary, U: ToBinary, I: ToBinary> ToBinary for (&T, &U, &I) {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.0.to_binary(binary)?;
         self.1.to_binary(binary)?;
         self.2.to_binary(binary)?;
@@ -767,7 +798,7 @@ impl<T: ToBinary, U: ToBinary, I: ToBinary> ToBinary for (&T, &U, &I) {
     }
 }
 impl<T: FromBinary, U: FromBinary, I: FromBinary, O: FromBinary> FromBinary for (T, U, I, O) {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok((
             T::from_binary(binary)?,
             U::from_binary(binary)?,
@@ -777,7 +808,7 @@ impl<T: FromBinary, U: FromBinary, I: FromBinary, O: FromBinary> FromBinary for 
     }
 }
 impl<T: ToBinary, U: ToBinary, I: ToBinary, O: ToBinary> ToBinary for (&T, &U, &I, &O) {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.0.to_binary(binary)?;
         self.1.to_binary(binary)?;
         self.2.to_binary(binary)?;
@@ -786,7 +817,7 @@ impl<T: ToBinary, U: ToBinary, I: ToBinary, O: ToBinary> ToBinary for (&T, &U, &
     }
 }
 impl<T: FromBinary, const N: usize> FromBinary for [T; N] {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         let mut out = [const { None }; N];
         for index in 0..N {
             out[index] = Some(T::from_binary(binary)?)
@@ -795,7 +826,7 @@ impl<T: FromBinary, const N: usize> FromBinary for [T; N] {
     }
 }
 impl<T: ToBinary, const N: usize> ToBinary for [T; N] {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         for value in self.iter() {
             value.to_binary(binary)?;
         }
@@ -803,60 +834,56 @@ impl<T: ToBinary, const N: usize> ToBinary for [T; N] {
     }
 }
 impl FromBinary for std::cmp::Ordering {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         match u8::from_binary(binary)? {
             0 => Ok(std::cmp::Ordering::Equal),
             1 => Ok(std::cmp::Ordering::Less),
             2 => Ok(std::cmp::Ordering::Greater),
-            _ => Err(Error::new(
-                ErrorKind::InvalidData,
-                "Failed to get Ordering from binary",
-            )),
+            _ => err(ErrorKind::InvalidData, "Failed to get Ordering from binary"),
         }
     }
 }
 impl ToBinary for std::cmp::Ordering {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         match self {
-            std::cmp::Ordering::Equal => 0_u8.to_binary(binary)?,
-            std::cmp::Ordering::Less => 1_u8.to_binary(binary)?,
-            std::cmp::Ordering::Greater => 2_u8.to_binary(binary)?,
+            std::cmp::Ordering::Equal => 0_u8.to_binary(binary),
+            std::cmp::Ordering::Less => 1_u8.to_binary(binary),
+            std::cmp::Ordering::Greater => 2_u8.to_binary(binary),
         }
-        Ok(())
     }
 }
 impl<T: FromBinary> FromBinary for Box<T> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(Box::new(T::from_binary(binary)?))
     }
 }
 impl<T: ToBinary> ToBinary for Box<T> {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.as_ref().to_binary(binary)
     }
 }
 impl FromBinary for std::net::Ipv4Addr {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(Self::from_bits(u32::from_binary(binary)?))
     }
 }
 impl ToBinary for std::net::Ipv4Addr {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.to_bits().to_binary(binary)
     }
 }
 impl FromBinary for std::net::Ipv6Addr {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(Self::from_bits(u128::from_binary(binary)?))
     }
 }
 impl ToBinary for std::net::Ipv6Addr {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.to_bits().to_binary(binary)
     }
 }
 impl FromBinary for std::net::IpAddr {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         match u8::from_binary(binary)? {
             0 => Ok(std::net::IpAddr::V4(std::net::Ipv4Addr::from_binary(
                 binary,
@@ -864,30 +891,26 @@ impl FromBinary for std::net::IpAddr {
             1 => Ok(std::net::IpAddr::V6(std::net::Ipv6Addr::from_binary(
                 binary,
             )?)),
-            _ => Err(Error::new(
-                ErrorKind::InvalidData,
-                "Failed to get IpAddr from binary",
-            )),
+            _ => err(ErrorKind::InvalidData, "Failed to get IpAddr from binary"),
         }
     }
 }
 impl ToBinary for std::net::IpAddr {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         match self {
             std::net::IpAddr::V4(addr) => {
                 0_u8.to_binary(binary)?;
-                addr.to_binary(binary)?;
+                addr.to_binary(binary)
             }
             std::net::IpAddr::V6(addr) => {
                 1_u8.to_binary(binary)?;
-                addr.to_binary(binary)?;
+                addr.to_binary(binary)
             }
         }
-        Ok(())
     }
 }
 impl FromBinary for std::net::SocketAddrV4 {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(Self::new(
             std::net::Ipv4Addr::from_binary(binary)?,
             u16::from_binary(binary)?,
@@ -895,14 +918,13 @@ impl FromBinary for std::net::SocketAddrV4 {
     }
 }
 impl ToBinary for std::net::SocketAddrV4 {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.ip().to_binary(binary)?;
-        self.port().to_binary(binary)?;
-        Ok(())
+        self.port().to_binary(binary)
     }
 }
 impl FromBinary for std::net::SocketAddrV6 {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(Self::new(
             std::net::Ipv6Addr::from_binary(binary)?,
             u16::from_binary(binary)?,
@@ -912,16 +934,15 @@ impl FromBinary for std::net::SocketAddrV6 {
     }
 }
 impl ToBinary for std::net::SocketAddrV6 {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.ip().to_binary(binary)?;
         self.port().to_binary(binary)?;
         self.flowinfo().to_binary(binary)?;
-        self.scope_id().to_binary(binary)?;
-        Ok(())
+        self.scope_id().to_binary(binary)
     }
 }
 impl FromBinary for std::net::SocketAddr {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         match u8::from_binary(binary)? {
             0 => Ok(std::net::SocketAddr::V4(
                 std::net::SocketAddrV4::from_binary(binary)?,
@@ -929,15 +950,15 @@ impl FromBinary for std::net::SocketAddr {
             1 => Ok(std::net::SocketAddr::V6(
                 std::net::SocketAddrV6::from_binary(binary)?,
             )),
-            _ => Err(Error::new(
+            _ => err(
                 ErrorKind::InvalidData,
                 "Could not get SocketAddr from binary",
-            )),
+            ),
         }
     }
 }
 impl ToBinary for std::net::SocketAddr {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         match self {
             std::net::SocketAddr::V4(addr) => {
                 0_u8.to_binary(binary)?;
@@ -952,7 +973,7 @@ impl ToBinary for std::net::SocketAddr {
 }
 impl FromBinary for std::io::ErrorKind {
     // If only there was a better way...
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         match u8::from_binary(binary)? {
             0 => Ok(Self::NotFound),
             1 => Ok(Self::PermissionDenied),
@@ -992,15 +1013,15 @@ impl FromBinary for std::io::ErrorKind {
             35 => Ok(Self::UnexpectedEof),
             36 => Ok(Self::OutOfMemory),
             37 => Ok(Self::Other),
-            _ => Err(Error::new(
+            _ => err(
                 ErrorKind::InvalidData,
                 "Could not get ErrorKind from binary",
-            )),
+            ),
         }
     }
 }
 impl ToBinary for std::io::ErrorKind {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         // I can't use a match statement because it is non-exaustive
         if let Self::NotFound = self {
             Ok(0_u8.to_binary(binary)?)
@@ -1079,28 +1100,25 @@ impl ToBinary for std::io::ErrorKind {
         } else if let Self::Other = self {
             Ok(37_u8.to_binary(binary)?)
         } else {
-            Err(Error::new(
+            err(
                 ErrorKind::Unsupported,
-                "This version cannot handle that ErrorKind variant",
-            ))
+                "Attempted to get an ErrorKind with an invalid discriminant from binary",
+            )
         }
     }
 }
 impl<T: FromBinary> FromBinary for std::ops::Bound<T> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         match u8::from_binary(binary)? {
             0 => Ok(std::ops::Bound::Excluded(T::from_binary(binary)?)),
             1 => Ok(std::ops::Bound::Included(T::from_binary(binary)?)),
             2 => Ok(std::ops::Bound::Unbounded),
-            _ => Err(Error::new(
-                ErrorKind::InvalidData,
-                "Could not get Bound from binary",
-            )),
+            _ => err(ErrorKind::InvalidData, "Could not get Bound from binary"),
         }
     }
 }
 impl<T: ToBinary> ToBinary for std::ops::Bound<T> {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         match self {
             std::ops::Bound::Excluded(point) => {
                 0_u8.to_binary(binary)?;
@@ -1115,59 +1133,59 @@ impl<T: ToBinary> ToBinary for std::ops::Bound<T> {
     }
 }
 impl<T: FromBinary> FromBinary for std::ops::Range<T> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(T::from_binary(binary)?..T::from_binary(binary)?)
     }
 }
 impl<T: ToBinary> ToBinary for std::ops::Range<T> {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.start.to_binary(binary)?;
         self.end.to_binary(binary)
     }
 }
 impl<T: FromBinary> FromBinary for std::ops::RangeFrom<T> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(T::from_binary(binary)?..)
     }
 }
 impl<T: ToBinary> ToBinary for std::ops::RangeFrom<T> {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.start.to_binary(binary)
     }
 }
 impl<T: FromBinary> FromBinary for std::ops::RangeInclusive<T> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(T::from_binary(binary)?..=T::from_binary(binary)?)
     }
 }
 impl<T: ToBinary> ToBinary for std::ops::RangeInclusive<T> {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.start().to_binary(binary)?;
         self.end().to_binary(binary)
     }
 }
 impl<T: FromBinary> FromBinary for std::ops::RangeTo<T> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(..T::from_binary(binary)?)
     }
 }
 impl<T: ToBinary> ToBinary for std::ops::RangeTo<T> {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.end.to_binary(binary)
     }
 }
 impl<T: FromBinary> FromBinary for std::ops::RangeToInclusive<T> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(..=T::from_binary(binary)?)
     }
 }
 impl<T: ToBinary> ToBinary for std::ops::RangeToInclusive<T> {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.end.to_binary(binary)
     }
 }
 impl FromBinary for std::time::Duration {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(Self::new(
             u64::from_binary(binary)?,
             u32::from_binary(binary)?,
@@ -1175,66 +1193,63 @@ impl FromBinary for std::time::Duration {
     }
 }
 impl ToBinary for std::time::Duration {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.as_secs().to_binary(binary)?;
         self.subsec_nanos().to_binary(binary)
     }
 }
 impl FromBinary for std::time::SystemTime {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error>
-    where
-        Self: Sized,
-    {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(std::time::UNIX_EPOCH + std::time::Duration::from_binary(binary)?)
     }
 }
 impl ToBinary for std::time::SystemTime {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .to_binary(binary)
     }
 }
 impl FromBinary for std::backtrace::BacktraceStatus {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         match u8::from_binary(binary)? {
             0 => Ok(Self::Captured),
             1 => Ok(Self::Disabled),
             2 => Ok(Self::Unsupported),
-            _ => Err(Error::new(
+            _ => err(
                 ErrorKind::InvalidData,
                 "Failed to get BacktraceStatus from binary",
-            )),
+            ),
         }
     }
 }
 impl ToBinary for std::backtrace::BacktraceStatus {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         match self {
             Self::Captured => 0_u8.to_binary(binary),
             Self::Disabled => 1_u8.to_binary(binary),
             Self::Unsupported => 2_u8.to_binary(binary),
-            _ => Err(Error::new(
+            _ => err(
                 ErrorKind::Unsupported,
                 "This cannot convert this recent of a BacktraceStatus to binary",
-            )),
+            ),
         }
     }
 }
 impl<T: FromBinary> FromBinary for std::cell::Cell<T> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(Self::new(T::from_binary(binary)?))
     }
 }
 impl<T: ToBinary> ToBinary for std::cell::Cell<T> {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         // It is safe actually because we never mutate the anything,
         // meaning that it is essentially the same as just &T
         unsafe { (*self.as_ptr()).to_binary(binary) }
     }
 }
 impl<T: FromBinary> FromBinary for std::cell::OnceCell<T> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(match Option::<T>::from_binary(binary)? {
             Some(data) => Self::from(data),
             None => Self::new(),
@@ -1242,85 +1257,82 @@ impl<T: FromBinary> FromBinary for std::cell::OnceCell<T> {
     }
 }
 impl<T: ToBinary> ToBinary for std::cell::OnceCell<T> {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.get().to_binary(binary)
     }
 }
 impl<T: FromBinary> FromBinary for std::cell::UnsafeCell<T> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(Self::new(T::from_binary(binary)?))
     }
 }
 impl<T: ToBinary> ToBinary for std::cell::UnsafeCell<T> {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         unsafe { (*self.get()).to_binary(binary) }
     }
 }
 impl FromBinary for std::ffi::CString {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         match Self::new(Vec::from_binary(binary)?) {
             Ok(cstring) => Ok(cstring),
-            Err(_) => Err(Error::new(
-                ErrorKind::InvalidData,
-                "Failed to get CString from binary",
-            )),
+            Err(_) => err(ErrorKind::InvalidData, "Failed to get CString from binary"),
         }
     }
 }
 impl ToBinary for std::ffi::CString {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.as_bytes().to_binary(binary)
     }
 }
 impl ToBinary for std::ffi::CStr {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         std::ffi::CString::from(self).to_binary(binary)
     }
 }
 impl<T> FromBinary for std::marker::PhantomData<T> {
-    fn from_binary(_binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(_binary: &mut dyn Read) -> Result<Self> {
         Ok(Self)
     }
 }
 impl<T> ToBinary for std::marker::PhantomData<T> {
-    fn to_binary(&self, _binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, _binary: &mut dyn Write) -> Result<()> {
         Ok(())
     }
 }
 impl FromBinary for std::marker::PhantomPinned {
-    fn from_binary(_binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(_binary: &mut dyn Read) -> Result<Self> {
         Ok(Self)
     }
 }
 impl ToBinary for std::marker::PhantomPinned {
-    fn to_binary(&self, _binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, _binary: &mut dyn Write) -> Result<()> {
         Ok(())
     }
 }
 impl<T: FromBinary> FromBinary for std::mem::ManuallyDrop<T> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(Self::new(T::from_binary(binary)?))
     }
 }
 impl<T: ToBinary> ToBinary for std::mem::ManuallyDrop<T> {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.deref().to_binary(binary)
     }
 }
 impl<B: FromBinary, C: FromBinary> FromBinary for std::ops::ControlFlow<B, C> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         match u8::from_binary(binary)? {
             0 => Ok(Self::Break(B::from_binary(binary)?)),
             1 => Ok(Self::Continue(C::from_binary(binary)?)),
-            _ => Err(Error::new(
+            _ => err(
                 ErrorKind::InvalidData,
                 "Failed to get ControlFlow from binary",
-            )),
+            ),
         }
     }
 }
 impl<B: ToBinary, C: ToBinary> ToBinary for std::ops::ControlFlow<B, C> {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         match self {
             Self::Break(data) => {
                 0_u8.to_binary(binary)?;
@@ -1337,18 +1349,18 @@ macro_rules! non_zero_num_helper {
     ($($type: ty, $sub_type: ty)*) => {
         $(
             impl FromBinary for $type {
-                fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+                fn from_binary(binary: &mut dyn Read) -> Result<Self> {
                     match Self::new(<$sub_type>::from_binary(binary)?) {
                         Some(out) => Ok(out),
-                        None => Err(Error::new(
+                        None => err(
                             ErrorKind::InvalidData,
                             "Failed to get non zero number from binary"
-                        ))
+                        )
                     }
                 }
             }
             impl ToBinary for $type {
-                fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+                fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
                     self.get().to_binary(binary)
                 }
             }
@@ -1370,23 +1382,23 @@ non_zero_num_helper!(
     std::num::NonZeroIsize, isize
 );
 impl FromBinary for std::process::ExitCode {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(Self::from(u8::from_binary(binary)?))
     }
 }
 impl<T: FromBinary> FromBinary for std::sync::Mutex<T> {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         Ok(Self::new(T::from_binary(binary)?))
     }
 }
 impl<T: ToBinary> ToBinary for std::sync::Mutex<T> {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         match self.lock() {
             Ok(lock) => lock.to_binary(binary),
-            Err(_) => Err(Error::new(
+            Err(_) => err(
                 ErrorKind::Other,
                 "Could not convert Mutex to binary because it is poisoned",
-            )),
+            ),
         }
     }
 }
@@ -1394,12 +1406,12 @@ macro_rules! atomic_helper {
     ($($type:ty, $sub_type: ty)*) => {
         $(
             impl FromBinary for $type {
-                fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+                fn from_binary(binary: &mut dyn Read) -> Result<Self> {
                     Ok(Self::new(<$sub_type>::from_binary(binary)?))
                 }
             }
             impl ToBinary for $type {
-                fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+                fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
                     self.load(std::sync::atomic::Ordering::Acquire).to_binary(binary)
                 }
             }
@@ -1424,32 +1436,32 @@ atomic_helper!(
     std::sync::atomic::AtomicIsize, isize
 );
 impl FromBinary for std::sync::atomic::Ordering {
-    fn from_binary(binary: &mut dyn Read) -> Result<Self, Error> {
+    fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         match u8::from_binary(binary)? {
             0 => Ok(Self::AcqRel),
             1 => Ok(Self::Acquire),
             2 => Ok(Self::Relaxed),
             3 => Ok(Self::Release),
             4 => Ok(Self::SeqCst),
-            _ => Err(Error::new(
+            _ => err(
                 ErrorKind::InvalidData,
                 "Failed to get atomic::Ordering from binary",
-            )),
+            ),
         }
     }
 }
 impl ToBinary for std::sync::atomic::Ordering {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<(), Error> {
+    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         match self {
             Self::AcqRel => 0_u8.to_binary(binary),
             Self::Acquire => 1_u8.to_binary(binary),
             Self::Relaxed => 2_u8.to_binary(binary),
             Self::Release => 3_u8.to_binary(binary),
             Self::SeqCst => 4_u8.to_binary(binary),
-            _ => Err(Error::new(
+            _ => err(
                 ErrorKind::Unsupported,
                 "This cannot convert an atomic::Ordering this recent to binary",
-            )),
+            ),
         }
     }
 }
