@@ -16,6 +16,7 @@ pub mod style;
 pub use style::{Color, Style};
 mod log;
 pub use log::{logln, set_log_path};
+pub mod aes;
 
 /// A version of [println] that uses the same
 /// input syntax but only prints when
@@ -197,6 +198,9 @@ impl<T, const CAP: usize> MaxVec<T, CAP> {
     pub const fn len(&self) -> usize {
         self.len
     }
+    pub const unsafe fn set_len(&mut self, new_len: usize) {
+        self.len = new_len;
+    }
     pub const fn get(&self, index: usize) -> Option<&T> {
         if index >= self.len {
             return None;
@@ -311,6 +315,25 @@ impl<T, const CAP: usize> MaxVec<T, CAP> {
     {
         self.as_slice().contains(target)
     }
+    /// Take all data out of the MaxVec and return it if it is full and if it is not then do
+    /// nothing. If this returns Some(data) then this will be reset to an empty state.
+    pub fn take_if_full(&mut self) -> Option<[T; CAP]> {
+        if self.len() == CAP {
+            self.len = 0;
+            Some(
+                std::mem::replace(
+                    &mut self.inner,
+                    [const { std::mem::MaybeUninit::zeroed() }; CAP],
+                )
+                .map(|val| unsafe { val.assume_init() }),
+            )
+        } else {
+            None
+        }
+    }
+    pub fn is_full(&self) -> bool {
+        self.len() == CAP
+    }
 }
 impl<const CAP: usize> MaxVec<u8, CAP> {
     /// Essentially like getting the inner array and reading into it then incrementing len as
@@ -323,6 +346,12 @@ impl<const CAP: usize> MaxVec<u8, CAP> {
         let amount = read.read(unfilled)?;
         self.len += amount;
         Ok(amount)
+    }
+    pub fn read_from_exact(&mut self, read: &mut impl Read) -> std::io::Result<()> {
+        let unfilled = unsafe { self.as_unfilled_slice_mut() };
+        read.read_exact(unfilled)?;
+        self.len = CAP;
+        Ok(())
     }
 }
 impl<const CAP: usize, T> Drop for MaxVec<T, CAP> {
@@ -402,6 +431,16 @@ impl<const CAP: usize> std::io::Write for MaxVec<u8, CAP> {
     }
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
+    }
+}
+impl<T, const CAP: usize> AsRef<[T]> for MaxVec<T, CAP> {
+    fn as_ref(&self) -> &[T] {
+        self.as_slice()
+    }
+}
+impl<T, const CAP: usize> AsMut<[T]> for MaxVec<T, CAP> {
+    fn as_mut(&mut self) -> &mut [T] {
+        self.as_slice_mut()
     }
 }
 

@@ -6,9 +6,17 @@ repository = "https://github.com/Course-Brains/abes_nice_things"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[[bins]]
+[[bin]]
 name = "run"
 path = "src/bin/run/main.rs"
+
+[[bin]]
+name = "encrypt"
+path = "src/encrypt.rs"
+
+[[bin]]
+name = "decrypt"
+path = "src/decrypt.rs"
 
 [dependencies]
 anyhow = { version = "1.0", optional = true }
