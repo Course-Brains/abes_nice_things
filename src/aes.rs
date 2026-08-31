@@ -38,7 +38,9 @@ impl<R: Read> Read for DecryptReader<R> {
     fn read(&mut self, mut buf: &mut [u8]) -> std::io::Result<usize> {
         // If we have data in the output buffer then let's use that
         if self.buffer_progress < self.buffer.len() as u8 {
-            return buf.write(&self.buffer[self.buffer_progress as usize..16]);
+            let amount = buf.write(&self.buffer[self.buffer_progress as usize..])?;
+            self.buffer_progress += amount as u8;
+            return Ok(amount);
         }
 
         if let Err(error) = self.inner.read_exact(&mut self.buffer) {
