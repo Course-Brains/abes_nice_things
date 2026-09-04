@@ -1,2 +1,6 @@
 /target
 *.swp
+/key
+/message
+/cipher
+/decrypted
