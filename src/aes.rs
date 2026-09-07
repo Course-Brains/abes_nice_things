@@ -2,47 +2,6 @@ use crate::MaxVec;
 use std::io::Read;
 use std::io::Write;
 
-pub enum FlushStrategy {
-    None,
-    Zeros,
-    Random(Box<dyn Read>),
-}
-
-pub struct BlockWriter<W: Write, const BLOCK_SIZE: usize> {
-    buffer: MaxVec<u8, BLOCK_SIZE>,
-    inner: W,
-    strategy: FlushStrategy,
-}
-impl<W: Write, const BLOCK_SIZE: usize> Write for BlockWriter<W, BLOCK_SIZE> {
-    fn write(&mut self, mut buf: &[u8]) -> std::io::Result<usize> {
-        let amount_read = self.buffer.read_from(&mut buf)?;
-        if self.buffer.is_full() {
-            self.inner.write_all(self.buffer.as_slice())?;
-            self.buffer.empty_iffy();
-        }
-        Ok(amount_read)
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        if !self.buffer.is_full() {
-            match &mut self.strategy {
-                FlushStrategy::None => {
-                    return Err(std::io::Error::other(
-                        "Attempted to flush an incomplete block with no resolving strategy",
-                    ));
-                }
-                FlushStrategy::Zeros => self
-                    .buffer
-                    .read_from_exact(&mut [0; BLOCK_SIZE].as_slice())
-                    .unwrap(), // infallible
-                FlushStrategy::Random(source) => self.buffer.read_from_exact(source)?,
-            }
-        }
-        self.inner.write_all(self.buffer.as_slice())?;
-        self.buffer.empty_iffy();
-        Ok(())
-    }
-}
-
 pub struct DecryptReader<R: Read> {
     round_keys: [Block; 15],
     /// The output buffer for caching the output when not all of it is needed at once
@@ -130,6 +89,12 @@ impl<W: Write> EncryptWriter<W> {
             inner,
             prev_block: Block::from_bytes(initialization_vector),
         })
+    }
+    pub const fn get_ref(&self) -> &W {
+        &self.inner
+    }
+    pub const fn get_mut(&mut self) -> &mut W {
+        &mut self.inner
     }
 }
 impl<W: Write> Write for EncryptWriter<W> {
