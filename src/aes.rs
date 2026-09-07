@@ -2,6 +2,47 @@ use crate::MaxVec;
 use std::io::Read;
 use std::io::Write;
 
+pub enum FlushStrategy {
+    None,
+    Zeros,
+    Random(Box<dyn Read>),
+}
+
+pub struct BlockWriter<W: Write, const BLOCK_SIZE: usize> {
+    buffer: MaxVec<u8, BLOCK_SIZE>,
+    inner: W,
+    strategy: FlushStrategy,
+}
+impl<W: Write, const BLOCK_SIZE: usize> Write for BlockWriter<W, BLOCK_SIZE> {
+    fn write(&mut self, mut buf: &[u8]) -> std::io::Result<usize> {
+        let amount_read = self.buffer.read_from(&mut buf)?;
+        if self.buffer.is_full() {
+            self.inner.write_all(self.buffer.as_slice())?;
+            self.buffer.empty_iffy();
+        }
+        Ok(amount_read)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        if !self.buffer.is_full() {
+            match &mut self.strategy {
+                FlushStrategy::None => {
+                    return Err(std::io::Error::other(
+                        "Attempted to flush an incomplete block with no resolving strategy",
+                    ));
+                }
+                FlushStrategy::Zeros => self
+                    .buffer
+                    .read_from_exact(&mut [0; BLOCK_SIZE].as_slice())
+                    .unwrap(), // infallible
+                FlushStrategy::Random(source) => self.buffer.read_from_exact(source)?,
+            }
+        }
+        self.inner.write_all(self.buffer.as_slice())?;
+        self.buffer.empty_iffy();
+        Ok(())
+    }
+}
+
 pub struct DecryptReader<R: Read> {
     round_keys: [Block; 15],
     /// The output buffer for caching the output when not all of it is needed at once
@@ -10,15 +51,17 @@ pub struct DecryptReader<R: Read> {
     /// from index 5 to index 15
     buffer_progress: u8,
     inner: R,
+    prev_block: Block,
 }
 impl<R: Read> DecryptReader<R> {
-    pub fn new(inner: R, key: &[u8]) -> DecryptReader<R> {
-        Self {
-            round_keys: key_expansion(key),
+    pub fn new(inner: R, initialization_vector: [u8; 16], key: &[u8]) -> Option<DecryptReader<R>> {
+        Some(Self {
+            round_keys: key_expansion(key)?,
             buffer: [0; 16],
             buffer_progress: 16,
             inner,
-        }
+            prev_block: Block::from_bytes(initialization_vector),
+        })
     }
     /// Empties the output buffer, this is helpful because it will correspond to each flush of the
     /// writer.
@@ -32,6 +75,15 @@ impl<R: Read> DecryptReader<R> {
         let skipped = self.buffer.len() as u8 - self.buffer_progress;
         self.buffer_progress = 0;
         skipped
+    }
+    pub fn to_inner(self) -> R {
+        self.inner
+    }
+    pub const fn get_ref(&self) -> &R {
+        &self.inner
+    }
+    pub const fn get_mut(&mut self) -> &mut R {
+        &mut self.inner
     }
 }
 impl<R: Read> Read for DecryptReader<R> {
@@ -50,9 +102,13 @@ impl<R: Read> Read for DecryptReader<R> {
                 return Err(error);
             }
         }
-        self.buffer = Block::from_bytes(self.buffer)
-            .inv_cipher(&self.round_keys)
-            .to_bytes();
+        // buffer has crypt
+        let prev = self.prev_block;
+        self.prev_block = Block::from_bytes(self.buffer);
+        // prev(_block) has crypt
+        let mut decrypted = Block::from_bytes(self.buffer).inv_cipher(&self.round_keys);
+        decrypted ^= prev;
+        self.buffer = decrypted.to_bytes();
         self.buffer_progress = 0;
 
         let amount = buf.write(&self.buffer)?;
@@ -64,27 +120,42 @@ pub struct EncryptWriter<W: Write> {
     round_keys: [Block; 15],
     buffer: MaxVec<u8, 16>,
     inner: W,
+    prev_block: Block,
 }
 impl<W: Write> EncryptWriter<W> {
-    pub fn new(inner: W, key: &[u8]) -> Self {
-        Self {
-            round_keys: key_expansion(key),
+    pub fn new(inner: W, initialization_vector: [u8; 16], key: &[u8]) -> Option<Self> {
+        Some(Self {
+            round_keys: key_expansion(key)?,
             buffer: MaxVec::new(),
             inner,
-        }
+            prev_block: Block::from_bytes(initialization_vector),
+        })
     }
 }
 impl<W: Write> Write for EncryptWriter<W> {
     fn write(&mut self, mut buf: &[u8]) -> std::io::Result<usize> {
-        let amount_read = self.buffer.read_from(&mut buf)?;
+        // See if we can skip the buffer
+        if self.buffer.is_empty() && buf.len() >= 16 {
+            let mut data = [0; 16];
+            buf.read_exact(&mut data).unwrap(); // infallible
+            let mut plain = Block::from_bytes(data);
+            plain ^= self.prev_block;
+            let encrypted = plain.cipher(&self.round_keys);
+            self.prev_block = encrypted;
+            self.inner.write_all(&encrypted.to_bytes())?;
+            return Ok(16);
+        }
 
-        // If the buffer is full then we can send it off
+        let amount_read = self.buffer.read_from(&mut buf)?;
+        // If the buffer is full then we send it off
         if self.buffer.is_full() {
-            let encrypted = Block::from_bytes(self.buffer.take_if_full().unwrap())
-                .cipher(&self.round_keys)
-                .to_bytes();
+            let mut plain = Block::from_bytes(self.buffer.take_if_full().unwrap()); // infallible
+            plain ^= self.prev_block;
+
+            let encrypted = plain.cipher(&self.round_keys);
+            self.prev_block = encrypted;
             // yucky
-            self.inner.write_all(&encrypted)?;
+            self.inner.write_all(&encrypted.to_bytes())?;
         }
 
         // This is correct because we are writing it to the internal buffer
@@ -100,11 +171,14 @@ impl<W: Write> Write for EncryptWriter<W> {
             self.buffer.read_from(&mut [0_u8; 15].as_slice()).unwrap();
             assert!(self.buffer.is_full());
         }
-        let encrypted = Block::from_bytes(self.buffer.take_if_full().unwrap())
+        let plain = self.buffer.take_if_full().unwrap(); // infallible
+        let encrypted = (Block::from_bytes(plain) ^ self.prev_block)
             .cipher(&self.round_keys)
             .to_bytes();
+        self.prev_block = Block::from_bytes(encrypted);
         // yucky 2: electric boogaloo
-        self.inner.write_all(&encrypted)
+        self.inner.write_all(&encrypted)?;
+        self.inner.flush()
     }
 }
 impl<W: Write> Drop for EncryptWriter<W> {
@@ -388,14 +462,58 @@ impl std::fmt::Display for Block {
         Ok(())
     }
 }
+impl std::ops::Add for Block {
+    type Output = Block;
+    fn add(self, rhs: Self) -> Self::Output {
+        Block([
+            self.0[0] + rhs.0[0],
+            self.0[1] + rhs.0[1],
+            self.0[2] + rhs.0[2],
+            self.0[3] + rhs.0[3],
+        ])
+    }
+}
+impl std::ops::AddAssign for Block {
+    fn add_assign(&mut self, rhs: Self) {
+        self.0[0] += rhs.0[0];
+        self.0[1] += rhs.0[1];
+        self.0[2] += rhs.0[2];
+        self.0[3] += rhs.0[3];
+    }
+}
+impl std::ops::BitXor for Block {
+    type Output = Block;
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        let mut out = Block([Word([Byte(7); 4]); 4]);
+        for col in 0..4 {
+            for row in 0..4 {
+                out.0[col].0[row] = Byte(self.0[col].0[row].0 ^ rhs.0[col].0[row].0)
+            }
+        }
+        out
+    }
+}
+impl std::ops::BitXorAssign for Block {
+    fn bitxor_assign(&mut self, rhs: Self) {
+        for col in 0..4 {
+            for row in 0..4 {
+                self.0[col].0[row].0 ^= rhs.0[col].0[row].0;
+            }
+        }
+    }
+}
 
-fn key_expansion(key: &[u8]) -> [Block; NUM_ROUNDS + 1] {
+/// Gets the key if given a valid input or None if it is too small
+fn key_expansion(key: &[u8]) -> Option<[Block; NUM_ROUNDS + 1]> {
+    if key.len() < 32 {
+        return None;
+    }
     let mut round_keys = (0..10).map(|shift| Word([Byte(1) << shift, Byte(0), Byte(0), Byte(0)]));
     let mut filled = 0;
     let mut expanded = [Word([Byte(0); 4]); 4 * (NUM_ROUNDS + 1)];
     let key_word_len = key.len().div_ceil(4);
     // The first Nk words of the output are to be the input key
-    while filled < key_word_len {
+    while filled < key_word_len && filled < expanded.len() {
         for offset in 0..4 {
             expanded[filled].0[offset] = Byte(key.get((filled * 4) + offset).copied().unwrap_or(0));
         }
@@ -422,7 +540,7 @@ fn key_expansion(key: &[u8]) -> [Block; NUM_ROUNDS + 1] {
         out[index].0[2] = expanded[(index * 4) + 2];
         out[index].0[3] = expanded[(index * 4) + 3];
     }
-    out
+    Some(out)
 }
 
 static S_BOX: [Byte; 256] = [
