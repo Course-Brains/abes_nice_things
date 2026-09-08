@@ -311,7 +311,7 @@ impl<W: std::io::Write + FromBinary> FromBinary for WriteHalf<W> {
 impl<W: std::io::Write + ToBinary> ToBinary for WriteHalf<W> {
     fn to_binary(&self, binary: &mut dyn std::io::Write) -> crate::from_binary::Result<()> {
         self.0.to_binary(binary)?;
-        self.1.as_ref().to_binary(binary)
+        self.1.to_binary(binary)
     }
 }
 /// This holds anything that implements [Read](std::io::Read)
@@ -496,6 +496,6 @@ impl<R: std::io::Read + FromBinary> FromBinary for ReadHalf<R> {
 impl<R: std::io::Read + ToBinary> ToBinary for ReadHalf<R> {
     fn to_binary(&self, binary: &mut dyn std::io::Write) -> crate::from_binary::Result<()> {
         self.0.to_binary(binary)?;
-        self.1.as_ref().to_binary(binary)
+        self.1.to_binary(binary)
     }
 }

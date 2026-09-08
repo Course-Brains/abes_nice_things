@@ -3,7 +3,7 @@
 //! programming again
 
 mod from_binary;
-pub use from_binary::{Binary, FromBinary, ToBinary};
+pub use from_binary::{FromBinary, ToBinary};
 mod input;
 pub use input::{Input, input};
 pub mod split;

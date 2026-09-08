@@ -1,4 +1,4 @@
-use crate::Binary;
+use crate::{FromBinary, ToBinary};
 use std::sync::atomic::*;
 /// A trait which is implemented by all numbers
 /// (All signed integers, all unsigned integers,
@@ -51,7 +51,8 @@ where
         + std::fmt::Display
         + Default
         + Send
-        + Binary
+        + ToBinary
+        + FromBinary
         + TryFrom<u8>
         + TryFrom<u16>
         + TryFrom<i8>
@@ -249,7 +250,8 @@ where
         + std::fmt::Debug
         + Default
         + std::panic::RefUnwindSafe
-        + Binary
+        + ToBinary
+        + FromBinary
         + 'static,
 {
     /// The non-atomic version of this atomic integer.

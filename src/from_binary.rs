@@ -437,16 +437,9 @@ pub trait ToBinary {
 /// ```ignore
 /// impl<T: Binary> Thingamajig { ... }
 /// ```
-pub trait Binary: FromBinary + ToBinary {}
-impl<T: FromBinary + ToBinary> Binary for T {}
 impl<T: ToBinary> ToBinary for &T {
     fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
-        T::to_binary(self, binary)
-    }
-}
-impl<T: ToBinary> ToBinary for &mut T {
-    fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
-        T::to_binary(self, binary)
+        <T as ToBinary>::to_binary(self, binary)
     }
 }
 macro_rules! num_helper {
@@ -723,7 +716,7 @@ impl<T: FromBinary> FromBinary for Option<T> {
         }
     }
 }
-impl<T: ToBinary> ToBinary for Option<&T> {
+impl<T: ToBinary> ToBinary for Option<T> {
     fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         match self {
             Some(value) => {
@@ -773,7 +766,7 @@ impl<T: FromBinary, U: FromBinary> FromBinary for (T, U) {
         Ok((T::from_binary(binary)?, U::from_binary(binary)?))
     }
 }
-impl<T: ToBinary, U: ToBinary> ToBinary for (&T, &U) {
+impl<T: ToBinary, U: ToBinary> ToBinary for (T, U) {
     fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.0.to_binary(binary)?;
         self.1.to_binary(binary)?;
@@ -789,7 +782,7 @@ impl<T: FromBinary, U: FromBinary, I: FromBinary> FromBinary for (T, U, I) {
         ))
     }
 }
-impl<T: ToBinary, U: ToBinary, I: ToBinary> ToBinary for (&T, &U, &I) {
+impl<T: ToBinary, U: ToBinary, I: ToBinary> ToBinary for (T, U, I) {
     fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.0.to_binary(binary)?;
         self.1.to_binary(binary)?;
@@ -807,7 +800,7 @@ impl<T: FromBinary, U: FromBinary, I: FromBinary, O: FromBinary> FromBinary for 
         ))
     }
 }
-impl<T: ToBinary, U: ToBinary, I: ToBinary, O: ToBinary> ToBinary for (&T, &U, &I, &O) {
+impl<T: ToBinary, U: ToBinary, I: ToBinary, O: ToBinary> ToBinary for (T, U, I, O) {
     fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         self.0.to_binary(binary)?;
         self.1.to_binary(binary)?;
