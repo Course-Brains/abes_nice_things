@@ -17,6 +17,8 @@ pub use style::{Color, Style};
 mod log;
 pub use log::{logln, set_log_path};
 pub mod aes;
+#[cfg(unix)]
+pub mod random;
 
 /// A version of [println] that uses the same
 /// input syntax but only prints when
@@ -237,7 +239,14 @@ impl<T, const CAP: usize> MaxVec<T, CAP> {
     pub fn as_slice_mut(&mut self) -> &mut [T] {
         unsafe { std::mem::transmute(&mut self.inner[0..self.len]) }
     }
-    /// Gets the unfilled section of the inner array, reading from this in ANY capacity is unsafe
+    /// Gets the unfilled section of the inner array, reading from this in ANY capacity is unsafe.
+    /// However writing to it is completely safe and will cause zero issues so long as doing so
+    /// doesn't call any drop functions for the data within which was uninitialized memory. So if
+    /// you can guarantee that you will not read any data and nothing that was originally in it
+    /// will be dropped and cause issues because of that then go ahead.
+    ///
+    /// p.s. you can skip the drop call for the data which is here originally, see
+    /// [std::mem::forget] for more
     pub unsafe fn as_unfilled_slice_mut(&mut self) -> &mut [T] {
         unsafe { std::mem::transmute(&mut self.inner[self.len..CAP]) }
     }

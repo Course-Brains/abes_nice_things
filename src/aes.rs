@@ -2,6 +2,15 @@ use crate::MaxVec;
 use std::io::Read;
 use std::io::Write;
 
+pub enum FlushSource {
+    Zeros,
+    Reader(Box<dyn Read>),
+    #[cfg(unix)]
+    Random,
+    #[cfg(unix)]
+    URandom,
+}
+
 pub struct DecryptReader<R: Read> {
     round_keys: [Block; 15],
     /// The output buffer for caching the output when not all of it is needed at once
@@ -80,14 +89,21 @@ pub struct EncryptWriter<W: Write> {
     buffer: MaxVec<u8, 16>,
     inner: W,
     prev_block: Block,
+    flush_source: FlushSource,
 }
 impl<W: Write> EncryptWriter<W> {
-    pub fn new(inner: W, initialization_vector: [u8; 16], key: &[u8]) -> Option<Self> {
+    pub fn new(
+        inner: W,
+        initialization_vector: [u8; 16],
+        key: &[u8],
+        flush_source: FlushSource,
+    ) -> Option<Self> {
         Some(Self {
             round_keys: key_expansion(key)?,
             buffer: MaxVec::new(),
             inner,
             prev_block: Block::from_bytes(initialization_vector),
+            flush_source,
         })
     }
     pub const fn get_ref(&self) -> &W {
@@ -132,9 +148,19 @@ impl<W: Write> Write for EncryptWriter<W> {
             return Ok(());
         }
         if !self.buffer.is_full() {
-            // infallible, will always completely fill the buffer
-            self.buffer.read_from(&mut [0_u8; 15].as_slice()).unwrap();
-            assert!(self.buffer.is_full());
+            match &mut self.flush_source {
+                FlushSource::Zeros => self
+                    .buffer
+                    .read_from_exact(&mut std::io::repeat(0))
+                    .unwrap(), // infallible
+                FlushSource::Reader(reader) => self.buffer.read_from_exact(reader)?,
+                #[cfg(unix)]
+                FlushSource::Random => crate::random::RANDOM
+                    .with_borrow_mut(|random| self.buffer.read_from_exact(random))?,
+                #[cfg(unix)]
+                FlushSource::URandom => crate::random::URANDOM
+                    .with_borrow_mut(|urandom| self.buffer.read_from_exact(urandom))?,
+            }
         }
         let plain = self.buffer.take_if_full().unwrap(); // infallible
         let encrypted = (Block::from_bytes(plain) ^ self.prev_block)

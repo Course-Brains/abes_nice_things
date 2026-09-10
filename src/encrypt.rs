@@ -1,5 +1,5 @@
 use abes_nice_things::ToBinary;
-use abes_nice_things::aes::EncryptWriter;
+use abes_nice_things::aes::{EncryptWriter, FlushSource};
 use std::io::Read;
 use std::io::Write;
 
@@ -19,6 +19,7 @@ fn main() {
         std::fs::File::create("cipher").unwrap(),
         initialization_vector,
         &key,
+        FlushSource::Random,
     )
     .unwrap();
     message.len().to_binary(&mut output).unwrap();
