@@ -42,7 +42,7 @@ fn f64_from_bytes(mantissa: [u8; 7]) -> f64 {
     for i in 0..7 {
         mantissa_bits[i + 1] = mantissa[i]
     }
-    let mantissa: u64 = unsafe { std::mem::transmute(mantissa_bits) };
+    let mantissa = u64::from_le_bytes(mantissa_bits);
     let mantissa = mantissa & mask;
     bits |= mantissa;
 
@@ -60,37 +60,37 @@ pub trait Random {
 }
 impl Random for bool {
     fn random() -> Self {
-        unsafe { std::mem::transmute(u8::random()) }
+        (u8::random() & 1) == 1
     }
     fn urandom() -> Self {
-        unsafe { std::mem::transmute(u8::urandom()) }
+        (u8::urandom() & 1) == 1
     }
 }
 // for plain old data which covers every possible value
-macro_rules! random_pod_helper {
+macro_rules! random_num_helper {
     ($type:ty) => {
         impl Random for $type {
             fn random() -> Self {
                 RANDOM.with_borrow_mut(|random| {
                     let mut buf = [0; std::mem::size_of::<$type>()];
                     random.read_exact(&mut buf).unwrap();
-                    unsafe { std::mem::transmute(buf) }
+                    Self::from_le_bytes(buf)
                 })
             }
             fn urandom() -> Self {
                 URANDOM.with_borrow_mut(|urandom| {
                     let mut buf = [0; std::mem::size_of::<$type>()];
                     urandom.read_exact(&mut buf).unwrap();
-                    unsafe { std::mem::transmute(buf) }
+                    Self::from_le_bytes(buf)
                 })
             }
         }
     };
     ($($type:ty)*) => {
-        $(random_pod_helper!($type);)*
+        $(random_num_helper!($type);)*
     };
 }
-random_pod_helper!(u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize);
+random_num_helper!(u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize);
 
 /// Create a random value from self
 pub trait PickRandom<T> {
