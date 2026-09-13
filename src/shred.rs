@@ -13,6 +13,33 @@ pub unsafe fn shred<T>(val: &mut T) {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct DropShred<T: Shred>(std::mem::ManuallyDrop<T>);
+impl<T: Shred> DropShred<T> {
+    pub const fn new(inner: T) -> DropShred<T> {
+        Self(std::mem::ManuallyDrop::new(inner))
+    }
+}
+impl<T: Shred> Drop for DropShred<T> {
+    fn drop(&mut self) {
+        unsafe {
+            self.0.shred();
+        }
+    }
+}
+impl<T: Shred> std::ops::Deref for DropShred<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl<T: Shred> std::ops::DerefMut for DropShred<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 use crate::MaxVec;
 use crate::Number;
 /// Destroy all data held by a type and leave it in a state which may or may not be valid. This
@@ -105,6 +132,6 @@ impl<T: Shred, U: Shred> Shred for (T, U) {
 }
 #[test]
 fn em_test() {
-    let mut data = vec!["foobar".to_string()];
-    data.shred_contents();
+    let data = DropShred::new(vec!["foobar".to_string()]);
+    std::mem::drop(data);
 }
