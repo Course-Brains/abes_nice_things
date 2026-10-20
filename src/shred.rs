@@ -84,6 +84,11 @@ impl ShredContents for String {
     }
 }
 
+impl<T: Shred> Shred for &mut T {
+    unsafe fn shred(&mut self) {
+        unsafe { <T as Shred>::shred(self) }
+    }
+}
 macro_rules! basic_shred {
     ($($type:ty)*) => {
         $(
@@ -95,12 +100,7 @@ macro_rules! basic_shred {
         )*
     }
 }
-basic_shred!(bool char);
-impl<N: Number> Shred for N {
-    unsafe fn shred(&mut self) {
-        unsafe { shred(self) }
-    }
-}
+basic_shred!(bool char u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize f32 f64);
 impl<T: Shred> Shred for Vec<T> {
     unsafe fn shred(&mut self) {
         self.shred_contents();

@@ -282,3 +282,14 @@ impl<T, const CAP: usize> AsMut<[T]> for MaxVec<T, CAP> {
         self.as_slice_mut()
     }
 }
+impl<T, const CAP: usize> std::ops::Deref for MaxVec<T, CAP> {
+    type Target = [T];
+    fn deref(&self) -> &Self::Target {
+        self.as_slice()
+    }
+}
+impl<T, const CAP: usize> std::ops::DerefMut for MaxVec<T, CAP> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_slice_mut()
+    }
+}

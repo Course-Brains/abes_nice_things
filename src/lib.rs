@@ -22,6 +22,8 @@ mod maxvec;
 pub mod random;
 pub use maxvec::*;
 pub mod shred;
+#[cfg(unix)]
+pub mod stun;
 
 /// A version of [println] that uses the same
 /// input syntax but only prints when

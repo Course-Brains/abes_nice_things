@@ -86,6 +86,7 @@ where
         + PrimFrom<isize>
         + PrimFrom<f32>
         + PrimFrom<f64>
+        + crate::shred::Shred
         + 'static,
 {
     /// The minimum value of this number. This will always be equivalent to the constant of the
@@ -263,6 +264,8 @@ where
     /// The store operation for this atomic integer, if you do not know what that means, then read
     /// the docs on atomics.
     fn store(&self, val: Self::Counterpart, ordering: Ordering);
+    /// The fetch_add function and method of all atomics
+    fn fetch_add(&self, val: Self::Counterpart, ordering: Ordering) -> Self::Counterpart;
 }
 /// A trait for primitive type conversions using the [as] keyword. This works nicely for converting
 /// from unknown [Number] types to known numbers.
@@ -416,6 +419,9 @@ macro_rules! atomic_helper {
             }
             fn store(&self, val: Self::Counterpart, ordering: Ordering) {
                 self.store(val, ordering)
+            }
+            fn fetch_add(&self, val: Self::Counterpart, ordering: Ordering) -> Self::Counterpart {
+                self.fetch_add(val, ordering)
             }
         }
     };

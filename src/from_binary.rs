@@ -592,7 +592,7 @@ impl<T: FromBinary + std::hash::Hash + Eq, S: FromBinary + std::hash::BuildHashe
     fn from_binary(binary: &mut dyn Read) -> Result<Self> {
         // Can't just use the Vec implementation for this
         // Format:
-        // capacity: usize/u32
+        // capacity: usize/u64
         // state
         // values
         let cap = usize::from_binary(binary)?;
@@ -730,10 +730,9 @@ impl<T: ToBinary> ToBinary for Option<T> {
 }
 impl<T: FromBinary, E: FromBinary> FromBinary for std::result::Result<T, E> {
     fn from_binary(binary: &mut dyn Read) -> Result<Self> {
-        match u8::from_binary(binary)? {
-            0 => Ok(Ok(T::from_binary(binary)?)),
-            1 => Ok(Err(E::from_binary(binary)?)),
-            _ => err(ErrorKind::InvalidData, "Failed to get Result from binary"),
+        match bool::from_binary(binary)? {
+            false => Ok(Ok(T::from_binary(binary)?)),
+            true => Ok(Err(E::from_binary(binary)?)),
         }
     }
 }
@@ -741,11 +740,11 @@ impl<T: ToBinary, E: ToBinary> ToBinary for std::result::Result<T, E> {
     fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         match self {
             Ok(value) => {
-                0_u8.to_binary(binary)?;
+                false.to_binary(binary)?;
                 value.to_binary(binary)
             }
             Err(error) => {
-                1_u8.to_binary(binary)?;
+                true.to_binary(binary)?;
                 error.to_binary(binary)
             }
         }
@@ -877,14 +876,13 @@ impl ToBinary for std::net::Ipv6Addr {
 }
 impl FromBinary for std::net::IpAddr {
     fn from_binary(binary: &mut dyn Read) -> Result<Self> {
-        match u8::from_binary(binary)? {
-            0 => Ok(std::net::IpAddr::V4(std::net::Ipv4Addr::from_binary(
+        match bool::from_binary(binary)? {
+            false => Ok(std::net::IpAddr::V4(std::net::Ipv4Addr::from_binary(
                 binary,
             )?)),
-            1 => Ok(std::net::IpAddr::V6(std::net::Ipv6Addr::from_binary(
+            true => Ok(std::net::IpAddr::V6(std::net::Ipv6Addr::from_binary(
                 binary,
             )?)),
-            _ => err(ErrorKind::InvalidData, "Failed to get IpAddr from binary"),
         }
     }
 }
@@ -892,11 +890,11 @@ impl ToBinary for std::net::IpAddr {
     fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         match self {
             std::net::IpAddr::V4(addr) => {
-                0_u8.to_binary(binary)?;
+                false.to_binary(binary)?;
                 addr.to_binary(binary)
             }
             std::net::IpAddr::V6(addr) => {
-                1_u8.to_binary(binary)?;
+                true.to_binary(binary)?;
                 addr.to_binary(binary)
             }
         }
@@ -936,17 +934,13 @@ impl ToBinary for std::net::SocketAddrV6 {
 }
 impl FromBinary for std::net::SocketAddr {
     fn from_binary(binary: &mut dyn Read) -> Result<Self> {
-        match u8::from_binary(binary)? {
-            0 => Ok(std::net::SocketAddr::V4(
+        match bool::from_binary(binary)? {
+            false => Ok(std::net::SocketAddr::V4(
                 std::net::SocketAddrV4::from_binary(binary)?,
             )),
-            1 => Ok(std::net::SocketAddr::V6(
+            true => Ok(std::net::SocketAddr::V6(
                 std::net::SocketAddrV6::from_binary(binary)?,
             )),
-            _ => err(
-                ErrorKind::InvalidData,
-                "Could not get SocketAddr from binary",
-            ),
         }
     }
 }
@@ -954,11 +948,11 @@ impl ToBinary for std::net::SocketAddr {
     fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         match self {
             std::net::SocketAddr::V4(addr) => {
-                0_u8.to_binary(binary)?;
+                false.to_binary(binary)?;
                 addr.to_binary(binary)
             }
             std::net::SocketAddr::V6(addr) => {
-                1_u8.to_binary(binary)?;
+                true.to_binary(binary)?;
                 addr.to_binary(binary)
             }
         }
@@ -1314,13 +1308,9 @@ impl<T: ToBinary> ToBinary for std::mem::ManuallyDrop<T> {
 }
 impl<B: FromBinary, C: FromBinary> FromBinary for std::ops::ControlFlow<B, C> {
     fn from_binary(binary: &mut dyn Read) -> Result<Self> {
-        match u8::from_binary(binary)? {
-            0 => Ok(Self::Break(B::from_binary(binary)?)),
-            1 => Ok(Self::Continue(C::from_binary(binary)?)),
-            _ => err(
-                ErrorKind::InvalidData,
-                "Failed to get ControlFlow from binary",
-            ),
+        match bool::from_binary(binary)? {
+            false => Ok(Self::Break(B::from_binary(binary)?)),
+            true => Ok(Self::Continue(C::from_binary(binary)?)),
         }
     }
 }
@@ -1328,11 +1318,11 @@ impl<B: ToBinary, C: ToBinary> ToBinary for std::ops::ControlFlow<B, C> {
     fn to_binary(&self, binary: &mut dyn Write) -> Result<()> {
         match self {
             Self::Break(data) => {
-                0_u8.to_binary(binary)?;
+                false.to_binary(binary)?;
                 data.to_binary(binary)
             }
             Self::Continue(data) => {
-                1_u8.to_binary(binary)?;
+                true.to_binary(binary)?;
                 data.to_binary(binary)
             }
         }

@@ -227,7 +227,9 @@ impl<T: UnsignedInteger> ProgressBar<T> {
             assert!(prev_val <= self.current);
             let value_per_second = <T as PrimAs<f64>>::prim_as(self.current - prev_val)
                 / (now.duration_since(prev_time).unwrap().as_secs_f64());
-            if let Some(rate) = self.rate {
+            if let Some(rate) = self.rate
+                && self.current > T::ZERO
+            {
                 match rate {
                     Rate::Absolute => {
                         write!(buffer, " {value_per_second:.2}/s")?;
@@ -249,7 +251,7 @@ impl<T: UnsignedInteger> ProgressBar<T> {
                     }
                 }
             }
-            if self.eta {
+            if self.eta && self.current > T::ZERO {
                 let mut seconds = (<T as PrimAs<f64>>::prim_as(self.target - self.current)
                     / value_per_second) as u64;
                 let days = seconds / 86400;
@@ -400,6 +402,10 @@ impl<T: UnsignedInteger + HasAtomic> Proxy<T> {
         // Dropping the arc tells the thread to stop
         std::mem::drop(self.arc);
         self.handle.join()
+    }
+    pub fn add(&self, amount: T) {
+        self.arc
+            .fetch_add(amount, std::sync::atomic::Ordering::Release);
     }
 }
 /// The enum used to specify what range of values to use for calculating the eta and rate for a
