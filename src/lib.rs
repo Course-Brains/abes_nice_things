@@ -21,9 +21,11 @@ mod maxvec;
 #[cfg(unix)]
 pub mod random;
 pub use maxvec::*;
+pub mod lazy_locks;
 pub mod shred;
 #[cfg(unix)]
 pub mod stun;
+pub use lazy_locks::{ArgLazyLock, ResetLazyCell, ResetLazyLock};
 
 /// A version of [println] that uses the same
 /// input syntax but only prints when
@@ -187,138 +189,6 @@ macro_rules! unix {
     };
 }
 
-/// Thread safe version.
-///
-/// Use with Arc<T> instead of just T to get a reference instead of cloning. Does put your data on
-/// the heap though so which is more expensive? A Clone every read or a heap allocation every
-/// write?
-///
-/// Hint hint: If something implements Copy then it has very very cheap Clones because it will just
-/// Copy it.
-#[derive(Debug)]
-pub struct ResetLazyLock<T: Clone, F: Fn() -> T = fn() -> T> {
-    data: std::sync::RwLock<Option<T>>,
-    closure: F,
-}
-impl<T: Clone, F: Fn() -> T> ResetLazyLock<T, F> {
-    pub const fn new(closure: F) -> Self {
-        Self {
-            data: std::sync::RwLock::new(None),
-            closure,
-        }
-    }
-    pub fn get(&self) -> Result<T, Box<dyn std::error::Error + '_>> {
-        loop {
-            let read = self.data.read()?;
-            if read.is_none() {
-                std::mem::drop(read);
-                self.recalc()?;
-            } else {
-                // Safety: We know that the value has not been dropped by a different thread
-                // because we maintained a shared lock of the data through checking if it is None
-                // until now. TOCTOU errors BEGONE!
-                break Ok(read.clone().unwrap());
-            }
-        }
-    }
-    pub fn recalc(
-        &self,
-    ) -> Result<(), std::sync::PoisonError<std::sync::RwLockWriteGuard<'_, Option<T>>>> {
-        let mut lock = self.data.write()?;
-        *lock = Some((self.closure)());
-        Ok(())
-    }
-    pub fn drop(
-        &self,
-    ) -> Result<(), std::sync::PoisonError<std::sync::RwLockWriteGuard<'_, Option<T>>>> {
-        *self.data.write()? = None;
-        Ok(())
-    }
-    pub fn take(
-        &self,
-    ) -> Result<T, std::sync::PoisonError<std::sync::RwLockWriteGuard<'_, Option<T>>>> {
-        let mut lock = self.data.write()?;
-        // Can't match because it is in a guard
-        if lock.is_none() {
-            Ok((self.closure)())
-        } else {
-            // Safety: Again, safe because we maintained the lock in between the check and now
-            Ok(lock.take().unwrap())
-        }
-    }
-    pub fn is_init(
-        &self,
-    ) -> Result<bool, std::sync::PoisonError<std::sync::RwLockReadGuard<'_, Option<T>>>> {
-        Ok(self.data.read()?.is_some())
-    }
-    /// True if triggered recalc
-    pub fn recalc_if_uninit(&self) -> Result<bool, Box<dyn std::error::Error + '_>> {
-        // Cheaply checking if we don't need to get a write lock
-        if self.is_init()? {
-            return Ok(false);
-        }
-        let mut lock = self.data.write()?;
-        // Have to check if it got initialized between the release of the read and getting the
-        // write
-        if lock.is_some() {
-            return Ok(false);
-        }
-        *lock = Some((self.closure)());
-        Ok(true)
-    }
-}
-#[derive(Clone, Debug)]
-pub struct ResetLazyCell<T: Clone, F: Fn() -> T = fn() -> T> {
-    data: std::cell::RefCell<Option<T>>,
-    closure: F,
-}
-impl<T: Clone, F: Fn() -> T> ResetLazyCell<T, F> {
-    pub const fn new(closure: F) -> Self {
-        Self {
-            data: std::cell::RefCell::new(None),
-            closure,
-        }
-    }
-    pub fn get(&self) -> T {
-        let read = self.data.borrow();
-        if read.is_none() {
-            std::mem::drop(read);
-            self.recalc();
-            self.data.borrow().clone().unwrap()
-        } else {
-            read.clone().unwrap()
-        }
-    }
-    pub fn recalc(&self) {
-        let mut lock = self.data.borrow_mut();
-        *lock = Some((self.closure)())
-    }
-    pub fn drop(&self) {
-        *self.data.borrow_mut() = None;
-    }
-    pub fn take(&self) -> T {
-        let mut lock = self.data.borrow_mut();
-        if lock.is_none() {
-            return (self.closure)();
-        }
-        lock.take().unwrap()
-    }
-    pub fn is_init(&self) -> bool {
-        self.data.borrow().is_some()
-    }
-    /// True if caused recalc
-    pub fn recalc_if_uninit(&self) -> bool {
-        if self.is_init() {
-            return false;
-        }
-        let mut write = self.data.borrow_mut();
-        if write.is_some() {
-            return false;
-        }
-        *write = Some((self.closure)());
-        true
-    }
-}
 pub struct OnDrop<F: Fn() = fn()>(F);
 impl<F: Fn()> OnDrop<F> {
     pub fn new(on_drop: F) -> OnDrop<F> {
