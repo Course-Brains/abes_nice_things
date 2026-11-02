@@ -142,12 +142,12 @@ union Data<T, F> {
     function: ManuallyDrop<F>,
 }
 
-pub struct ArgLazyLock<A, T, F: FnOnce(A) -> T = fn(A) -> T> {
+pub struct ArgLazyLock<A, T, F: FnOnce(&A) -> T = fn(&A) -> T> {
     once: Once,
     data: UnsafeCell<Data<T, F>>,
     _phantom: std::marker::PhantomData<A>,
 }
-impl<A, T, F: FnOnce(A) -> T> ArgLazyLock<A, T, F> {
+impl<A, T, F: FnOnce(&A) -> T> ArgLazyLock<A, T, F> {
     pub const fn new(function: F) -> ArgLazyLock<A, T, F> {
         // SAFETY: We are putting a function in the data and the Once is incomplete
         Self {
@@ -158,7 +158,7 @@ impl<A, T, F: FnOnce(A) -> T> ArgLazyLock<A, T, F> {
             _phantom: std::marker::PhantomData,
         }
     }
-    pub fn init(&self, arg: A) {
+    pub fn init(&self, arg: &A) {
         self.once.call_once(|| {
             // SAFETY: Before the once is used, the data is the function so it will be the function
             // Additionally, because the once can only be used once, we know that the function will
@@ -181,12 +181,12 @@ impl<A, T, F: FnOnce(A) -> T> ArgLazyLock<A, T, F> {
     pub unsafe fn get_unchecked(&self) -> &T {
         unsafe { (&self.data.get().as_ref_unchecked().data).deref() }
     }
-    pub fn get(&self, arg: A) -> &T {
+    pub fn get(&self, arg: &A) -> &T {
         self.init(arg);
         unsafe { self.get_unchecked() }
     }
 }
-impl<A, T, F: FnOnce(A) -> T> std::ops::Drop for ArgLazyLock<A, T, F> {
+impl<A, T, F: FnOnce(&A) -> T> std::ops::Drop for ArgLazyLock<A, T, F> {
     fn drop(&mut self) {
         // SAFETY: Due to using a Once, data will be in one of the following states:
         // Incomplete = need to drop function
@@ -213,13 +213,13 @@ impl<A, T, F: FnOnce(A) -> T> std::ops::Drop for ArgLazyLock<A, T, F> {
 }
 
 // The function does not need Sync because it is only ever used by one thread
-unsafe impl<A, T: Send + Sync, F: FnOnce(A) -> T + Send + Sync> Sync for ArgLazyLock<A, T, F> {}
+unsafe impl<A, T: Send + Sync, F: FnOnce(&A) -> T + Send + Sync> Sync for ArgLazyLock<A, T, F> {}
 // Due to Once poisoning this is unwind safe as well
-impl<A, T: UnwindSafe + RefUnwindSafe, F: FnOnce(A) -> T + UnwindSafe> RefUnwindSafe
+impl<A, T: UnwindSafe + RefUnwindSafe, F: FnOnce(&A) -> T + UnwindSafe> RefUnwindSafe
     for ArgLazyLock<A, T, F>
 {
 }
-impl<A, T: UnwindSafe, F: FnOnce(A) -> T + UnwindSafe> UnwindSafe for ArgLazyLock<A, T, F> {}
+impl<A, T: UnwindSafe, F: FnOnce(&A) -> T + UnwindSafe> UnwindSafe for ArgLazyLock<A, T, F> {}
 
 #[cfg(test)]
 mod tests {
@@ -229,14 +229,14 @@ mod tests {
         #[test]
         fn single_thread() {
             let lock = ArgLazyLock::new(|arg| arg * 2);
-            lock.get(5);
-            assert_eq!(*lock.get(0), 10);
+            lock.get(&5);
+            assert_eq!(*lock.get(&0), 10);
         }
         #[test]
         fn single_thread_static() {
             static LOCK: ArgLazyLock<usize, String> = ArgLazyLock::new(|arg| arg.to_string());
-            LOCK.get(10);
-            assert_eq!(LOCK.get(5).as_str(), "10");
+            LOCK.get(&10);
+            assert_eq!(LOCK.get(&5).as_str(), "10");
         }
     }
 }
